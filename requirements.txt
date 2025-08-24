@@ -1,4 +1,2 @@
-loggin
-random
+python-telegram-bot==20.7
 requests
-sqlite3
