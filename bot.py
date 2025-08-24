@@ -7,7 +7,7 @@ from telegram.ext import Application, CommandHandler, CallbackQueryHandler, Mess
 # ==============================
 # CONFIG
 # ==============================
-BOT_TOKEN = "TU_TOKEN_AQUI"   # ⚠️ pon aquí tu token de BotFather
+BOT_TOKEN = "8271445453:AAE4FX1Crb7sLJ4IkZ1O_5DB39c8XGHDpcc"   # ⚠️ pon aquí tu token de BotFather
 
 # ==============================
 # LOGGING
