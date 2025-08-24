@@ -15,7 +15,7 @@ from telegram.ext import (
 # ==============================
 # CONFIG
 # ==============================
-BOT_TOKEN = "6629555218"   # ⚠️ pon tu token
+BOT_TOKEN = "8271445453:AAFt-Hxd-YBlVWi5pRnAPhGcYPjvKILTNJw"   # ⚠️ pon tu token
 ADMIN_ID = 6629555218         # tu ID de admin
 DB_FILE = "users.db"
 
