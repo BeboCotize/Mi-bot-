@@ -1,31 +1,30 @@
-import logging
-from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters
-from handlers import start, button_handler
-from antispam import antispam_handler
-from db import init_db
 import os
+import logging
+from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
+from antispam import antispam_handler
+from handlers import start, help_command
 
-logging.basicConfig(level=logging.INFO)
+# Configuración de logs
+logging.basicConfig(
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
+)
+logger = logging.getLogger(__name__)
 
-BOT_TOKEN = os.getenv("8271445453:AAGkEThWtDCPRfEFOUfzLBxc3lIriZ9SvsM")
+TOKEN = os.getenv("BOT_TOKEN")
 
 def main():
-    init_db()  # Crear tablas si no existen
-
-    app = Application.builder().token(BOT_TOKEN).build()
+    updater = Updater(TOKEN, use_context=True)
+    dp = updater.dispatcher
 
     # Comandos
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("unban", lambda u, c: None))  # Se añade en antispam.py
+    dp.add_handler(CommandHandler("start", start))
+    dp.add_handler(CommandHandler("help", help_command))
 
-    # Botones
-    app.add_handler(CallbackQueryHandler(button_handler))
+    # Anti-spam (mensajes normales)
+    dp.add_handler(MessageHandler(Filters.text & ~Filters.command, antispam_handler))
 
-    # Mensajes normales -> antispam
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, antispam_handler))
-
-    logging.info("🤖 Bot corriendo...")
-    app.run_polling()
+    updater.start_polling()
+    updater.idle()
 
 if __name__ == "__main__":
     main()
