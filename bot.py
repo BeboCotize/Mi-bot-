@@ -15,7 +15,7 @@ from telegram.ext import (
 # ==============================
 # CONFIG
 # ==============================
-BOT_TOKEN = "8271445453:AAE4FX1Crb7sLJ4IkZ1O_5DB39c8XGHDpcc"   # ⚠️ pon tu token
+BOT_TOKEN = "AQUI_TU_TOKEN"   # ⚠️ pon tu token
 ADMIN_ID = 6629555218         # tu ID de admin
 DB_FILE = "users.db"
 
@@ -212,4 +212,19 @@ async def adminbroadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ==============================
 def main():
     init_db()
-    app = Application.builder
+    app = Application.builder().token(BOT_TOKEN).build()
+
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("register", register))
+
+    # Admin
+    app.add_handler(CommandHandler("adminlist", adminlist))
+    app.add_handler(CommandHandler("admindelete", admindelete))
+    app.add_handler(CommandHandler("adminbroadcast", adminbroadcast))
+
+    app.add_handler(CallbackQueryHandler(button))
+
+    app.run_polling()
+
+if __name__ == "__main__":
+    main()
