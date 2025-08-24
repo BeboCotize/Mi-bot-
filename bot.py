@@ -148,4 +148,4 @@ async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     text = "👑 Panel de Admin\n\n"
     text += "Usuarios registrados:\n"
-    text += "\n".join(f"• {u}" for u in users) or "📭 Ning
+    text += "\n".join(f"• {u}" for u in users) or "📭 Ninguno"
