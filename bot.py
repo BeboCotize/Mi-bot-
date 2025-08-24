@@ -6,6 +6,7 @@ from telegram.ext import (
     CallbackQueryHandler,
     ContextTypes,
     MessageHandler,
+    CommandHandler,
     filters,
 )
 
@@ -52,7 +53,7 @@ def register_user(user_id: int):
         conn.commit()
 
 # ==============================
-# START
+# START (FUNCIONA CON /start y prefijos)
 # ==============================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
@@ -229,7 +230,7 @@ async def prefixed_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if not is_registered(uid) and not lower.startswith(tuple(p + "start" for p in PREFIXES)):
-        await update.effective_message.reply_text("🚫 No estás registrado. Usa .start para registrarte.")
+        await update.effective_message.reply_text("🚫 No estás registrado. Usa /start o .start para registrarte.")
         return
 
     for p in PREFIXES:
@@ -247,6 +248,10 @@ async def prefixed_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     app = Application.builder().token(BOT_TOKEN).build()
 
+    # ✅ acepta /start normal
+    app.add_handler(CommandHandler("start", start))
+
+    # ✅ acepta prefijos personalizados
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, prefixed_router))
     app.add_handler(CallbackQueryHandler(button))
 
