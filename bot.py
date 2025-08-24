@@ -1,29 +1,55 @@
+# bot.py
 import os
-from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
-from antispam import antispam_handler
+from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
+from telegram.ext import (
+    Application,
+    CommandHandler,
+    MessageHandler,
+    CallbackQueryHandler,
+    ContextTypes,
+    filters,
+)
 
-# Carga del token desde variable de entorno en Railway
+from antispam import antispam_handler
+from db import init_db
+
 TOKEN = os.getenv("BOT_TOKEN")
 
-if not TOKEN:
-    raise ValueError("⚠️ No se encontró la variable de entorno BOT_TOKEN en Railway.")
+# /start
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    keyboard = [
+        [InlineKeyboardButton("🎬 Películas", callback_data="peliculas")],
+        [InlineKeyboardButton("⬅️ Volver atrás", callback_data="volver")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await update.message.reply_text("Bienvenido al bot 👋", reply_markup=reply_markup)
 
-def start(update, context):
-    update.message.reply_text("🤖 ¡Hola! Soy tu bot antispam funcionando en Railway.")
+# Manejo de botones
+async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    if query.data == "peliculas":
+        await query.edit_message_text("Aquí tienes la lista de películas 🎥")
+    elif query.data == "volver":
+        await query.edit_message_text("Has vuelto al menú principal ⬅️")
 
 def main():
-    updater = Updater(TOKEN, use_context=True)
-    dp = updater.dispatcher
+    init_db()
 
-    # Comandos básicos
-    dp.add_handler(CommandHandler("start", start))
+    app = Application.builder().token(TOKEN).build()
 
-    # Manejo de mensajes (antispam)
-    dp.add_handler(MessageHandler(Filters.text & ~Filters.command, antispam_handler))
+    # Comandos
+    app.add_handler(CommandHandler("start", start))
 
-    # Inicia el bot
-    updater.start_polling()
-    updater.idle()
+    # Botones
+    app.add_handler(CallbackQueryHandler(button_handler))
+
+    # Antispam
+    app.add_handler(MessageHandler(filters.ALL, antispam_handler))
+
+    print("🤖 Bot iniciado...")
+    app.run_polling()
 
 if __name__ == "__main__":
     main()
