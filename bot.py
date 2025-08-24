@@ -74,7 +74,7 @@ def get_all_users():
     return users
 
 # Panel admin (cambia tu ID aquí)
-ADMIN_ID = 123456789
+ADMIN_ID = 6629555218
 
 # Mensaje principal
 def main_menu(username):
