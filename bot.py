@@ -1,107 +1,62 @@
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram.constants import ParseMode
 import logging
-from datetime import datetime
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import (
-    Application,
-    CommandHandler,
-    CallbackQueryHandler,
-    ContextTypes,
-    MessageHandler,
-    filters
-)
+import sqlite3
+import datetime
 
-# === CONFIGURACIÓN ===
+# 🚀 Configuración
 TOKEN = "8271445453:AAFt-Hxd-YBlVWi5pRnAPhGcYPjvKILTNJw"
-ADMIN_ID = 6629555218  # tu id de Telegram
+ADMIN_ID = 6629555218  # tu ID de admin
+PREFIXES = [".", "?", "!", "#"]
 
-# Bases de datos en memoria
-registered_users = {}
-banned_users = {}
+# 📦 Base de datos SQLite
+conn = sqlite3.connect("users.db", check_same_thread=False)
+cursor = conn.cursor()
+cursor.execute("""CREATE TABLE IF NOT EXISTS users (
+    user_id INTEGER PRIMARY KEY,
+    name TEXT,
+    banned INTEGER DEFAULT 0,
+    reason TEXT,
+    date TEXT
+)""")
+conn.commit()
 
-# === LOGGING ===
-logging.basicConfig(
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
-)
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# === FUNCIONES DE ADMINISTRACIÓN ===
-async def ban_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != ADMIN_ID:
-        return
-    if len(context.args) < 2:
-        await update.message.reply_text("Uso: .ban <user_id> <razón>")
-        return
+# ============================
+# 🔹 Helpers
+# ============================
+def check_prefix(text: str, cmd: str):
+    return any(text.startswith(p + cmd) for p in PREFIXES)
 
-    user_id = int(context.args[0])
-    reason = " ".join(context.args[1:])
+def is_registered(user_id):
+    cursor.execute("SELECT * FROM users WHERE user_id = ?", (user_id,))
+    return cursor.fetchone() is not None
 
-    banned_users[user_id] = {
-        "reason": reason,
-        "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    }
-    if user_id in registered_users:
-        del registered_users[user_id]
+def is_banned(user_id):
+    cursor.execute("SELECT banned FROM users WHERE user_id = ?", (user_id,))
+    row = cursor.fetchone()
+    return row and row[0] == 1
 
-    await update.message.reply_text(f"🚫 Usuario {user_id} baneado por: {reason}")
+def register_user(user_id, name):
+    if not is_registered(user_id):
+        cursor.execute("INSERT INTO users (user_id, name, date) VALUES (?, ?, ?)",
+                       (user_id, name, datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+        conn.commit()
 
-
-async def unban_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != ADMIN_ID:
-        return
-    if len(context.args) < 1:
-        await update.message.reply_text("Uso: .unban <user_id>")
-        return
-
-    user_id = int(context.args[0])
-    if user_id in banned_users:
-        del banned_users[user_id]
-        await update.message.reply_text(f"✅ Usuario {user_id} desbaneado")
-    else:
-        await update.message.reply_text("⚠ Usuario no estaba baneado")
-
-
-async def list_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != ADMIN_ID:
-        return
-
-    text = "👥 Usuarios registrados:\n"
-    if registered_users:
-        for uid, data in registered_users.items():
-            name = data.get("name", "Desconocido")
-            date = data.get("date", "N/A")
-            text += f"• {uid} → {name} (📅 {date})\n"
-    else:
-        text += "📭 Ninguno\n"
-
-    text += "\n🚫 Usuarios baneados:\n"
-    if banned_users:
-        for uid, data in banned_users.items():
-            reason = data.get("reason", "Sin motivo")
-            date = data.get("date", "N/A")
-            text += f"• {uid} → {reason} (📅 {date})\n"
-    else:
-        text += "📭 Ninguno\n"
-
-    await update.message.reply_text(text)
-
-
-# === MENSAJE PRINCIPAL ===
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# ============================
+# 🔹 Handlers
+# ============================
+async def start_handler(update: Update, context):
     user = update.effective_user
 
-    # si está baneado
-    if user.id in banned_users:
-        reason = banned_users[user.id]["reason"]
-        date = banned_users[user.id]["date"]
-        await update.message.reply_text(f"🚫 Estás baneado.\nMotivo: {reason}\nFecha: {date}")
+    if is_banned(user.id):
+        await update.message.reply_text("🚫 Estás baneado y no puedes usar este bot.")
         return
 
-    # registrar usuario si no está
-    if user.id not in registered_users:
-        registered_users[user.id] = {
-            "name": user.first_name,
-            "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        }
+    register_user(user.id, user.first_name)
 
     keyboard = [
         [InlineKeyboardButton("🍔 Comida", callback_data="comida")],
@@ -109,50 +64,43 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("❌ Cerrar", callback_data="cerrar")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
+
     await update.message.reply_text(
-        f"👋 Hola {user.first_name}, bienvenido al bot.\nSelecciona una opción:",
+        f"👋 Bienvenido {user.first_name}, selecciona una opción:",
         reply_markup=reply_markup
     )
 
+# Para prefijos (.start, ?start, !start, #start)
+async def prefix_handler(update: Update, context):
+    text = update.message.text
+    if check_prefix(text, "start"):
+        await start_handler(update, context)
 
-# === CALLBACKS ===
-async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def buttons(update: Update, context):
     query = update.callback_query
     await query.answer()
 
     if query.data == "comida":
         keyboard = [
-            [InlineKeyboardButton("⬅️ Volver al menú principal", callback_data="menu")],
+            [InlineKeyboardButton("🔙 Volver al menú principal", callback_data="menu")],
             [InlineKeyboardButton("❌ Cerrar", callback_data="cerrar")]
         ]
         await query.edit_message_text(
-            "Aquí tienes comida deliciosa 🍕🍔🌮",
+            "🍔 Aquí tienes comida deliciosa",
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
 
     elif query.data == "peliculas":
         keyboard = [
-            [InlineKeyboardButton("🎞 Opción 1", callback_data="pelicula1")],
-            [InlineKeyboardButton("📽 Opción 2", callback_data="pelicula2")],
-            [InlineKeyboardButton("🍿 Opción 3", callback_data="pelicula3")],
-            [InlineKeyboardButton("🎥 Opción 4", callback_data="pelicula4")],
-            [InlineKeyboardButton("⬅️ Volver al menú principal", callback_data="menu")],
+            [InlineKeyboardButton("🎥 Acción", callback_data="accion")],
+            [InlineKeyboardButton("😂 Comedia", callback_data="comedia")],
+            [InlineKeyboardButton("😱 Terror", callback_data="terror")],
+            [InlineKeyboardButton("💘 Romance", callback_data="romance")],
+            [InlineKeyboardButton("🔙 Volver al menú principal", callback_data="menu")],
             [InlineKeyboardButton("❌ Cerrar", callback_data="cerrar")]
         ]
         await query.edit_message_text(
-            "🎬 Menú de películas, elige una opción:",
-            reply_markup=InlineKeyboardMarkup(keyboard)
-        )
-
-    elif query.data.startswith("pelicula"):
-        opcion = query.data.replace("pelicula", "")
-        keyboard = [
-            [InlineKeyboardButton("⬅️ Volver a películas", callback_data="peliculas")],
-            [InlineKeyboardButton("⬅️ Volver al menú principal", callback_data="menu")],
-            [InlineKeyboardButton("❌ Cerrar", callback_data="cerrar")]
-        ]
-        await query.edit_message_text(
-            f"Has seleccionado la película opción {opcion} 🍿",
+            "🎬 Selecciona un género:",
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
 
@@ -163,37 +111,29 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("❌ Cerrar", callback_data="cerrar")]
         ]
         await query.edit_message_text(
-            "🏠 Menú principal:\nSelecciona una opción:",
+            "👋 Menú principal:",
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
 
     elif query.data == "cerrar":
-        await query.edit_message_text("👋 Conversación cerrada.")
+        await query.delete_message()
 
-
-# === MANEJADOR DE MENSAJES ===
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text.lower()
-    if any(text.startswith(prefix + "start") for prefix in [".", "/", "!", "?"]):
-        await start(update, context)
-
-
-# === MAIN ===
+# ============================
+# 🔹 Main
+# ============================
 def main():
     app = Application.builder().token(TOKEN).build()
 
-    # Prefijos para admin
-    app.add_handler(CommandHandler("ban", ban_user, filters=filters.User(user_id=ADMIN_ID)))
-    app.add_handler(CommandHandler("unban", unban_user, filters=filters.User(user_id=ADMIN_ID)))
-    app.add_handler(CommandHandler("users", list_users, filters=filters.User(user_id=ADMIN_ID)))
+    # ✅ /start oficial
+    app.add_handler(CommandHandler("start", start_handler))
 
-    # Start y callbacks
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    app.add_handler(CallbackQueryHandler(button))
+    # ✅ prefijos (.start, ?start, !start, #start)
+    app.add_handler(MessageHandler(filters.TEXT & filters.Regex(r"^[\.\?!#]start"), prefix_handler))
 
-    print("🤖 Bot corriendo...")
+    app.add_handler(CallbackQueryHandler(buttons))
+
+    logger.info("✅ Bot iniciado")
     app.run_polling()
-
 
 if __name__ == "__main__":
     main()
