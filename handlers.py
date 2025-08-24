@@ -1,24 +1,8 @@
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
-from telegram.ext import ContextTypes
+from telegram import Update
+from telegram.ext import CallbackContext
 
-# /start
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    keyboard = [
-        [InlineKeyboardButton("🎬 Películas", callback_data="peliculas")],
-        [InlineKeyboardButton("🍔 Comida", callback_data="comida")],
-        [InlineKeyboardButton("⬅️ Volver atrás", callback_data="volver")]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text("👋 Bienvenido, elige una opción:", reply_markup=reply_markup)
+def start(update: Update, context: CallbackContext):
+    update.message.reply_text("👋 Hola! Soy tu bot.")
 
-# Botones
-async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-
-    if query.data == "peliculas":
-        await query.edit_message_text("🎬 Aquí irían tus películas...")
-    elif query.data == "comida":
-        await query.edit_message_text("🍔 Aquí iría la lista de comida...")
-    elif query.data == "volver":
-        await start(update, context)
+def help_command(update: Update, context: CallbackContext):
+    update.message.reply_text("ℹ️ Usa /start para iniciar. Evita enviar spam.")
