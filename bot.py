@@ -19,8 +19,8 @@ from telegram.ext import (
 # ==============================
 # CONFIG
 # ==============================
-BOT_TOKEN = "8271445453:AAE4FX1Crb7sLJ4IkZ1O_5DB39c8XGHDpcc"
-ADMIN_ID = 6629555218  # 👈 cambia al tuyo
+BOT_TOKEN = "8271445453:AAE4FX1Crb7sLJ4IkZ1O_5DB39c8XGHDpcc"   # ⚠️ Usa el token de BotFather
+ADMIN_ID = 6629555218         # ID del admin
 PREFIXES = [".", "!", "?", "#"]
 
 # ==============================
@@ -38,39 +38,46 @@ logger = logging.getLogger(__name__)
 def init_db():
     conn = sqlite3.connect("users.db")
     c = conn.cursor()
-    c.execute("CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, username TEXT)")
-    conn.commit()
-    conn.close()
-
-def add_user(user_id, username):
-    conn = sqlite3.connect("users.db")
-    c = conn.cursor()
-    c.execute("INSERT OR IGNORE INTO users (id, username) VALUES (?, ?)", (user_id, username))
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY,
+            username TEXT,
+            status TEXT DEFAULT 'registered'
+        )
+    """)
     conn.commit()
     conn.close()
 
 def is_registered(user_id):
     conn = sqlite3.connect("users.db")
     c = conn.cursor()
-    c.execute("SELECT id FROM users WHERE id=?", (user_id,))
+    c.execute("SELECT id FROM users WHERE id=? AND status='registered'", (user_id,))
     result = c.fetchone()
     conn.close()
-    return result is not None
+    return bool(result)
 
-def get_all_users():
+def add_user(user_id, username):
     conn = sqlite3.connect("users.db")
     c = conn.cursor()
-    c.execute("SELECT id, username FROM users")
-    users = c.fetchall()
+    c.execute("INSERT OR IGNORE INTO users (id, username, status) VALUES (?, ?, 'registered')",
+              (user_id, username))
+    conn.commit()
     conn.close()
-    return users
 
-def del_user(user_id):
+def delete_user(user_id):
     conn = sqlite3.connect("users.db")
     c = conn.cursor()
     c.execute("DELETE FROM users WHERE id=?", (user_id,))
     conn.commit()
     conn.close()
+
+def list_users():
+    conn = sqlite3.connect("users.db")
+    c = conn.cursor()
+    c.execute("SELECT id, username FROM users")
+    result = c.fetchall()
+    conn.close()
+    return result
 
 # ==============================
 # FUNCIONES DEL GENERADOR
@@ -98,21 +105,26 @@ def cc_gen(pattern, mes="rnd", ano="rnd", cvv="rnd"):
                 card += str(random.randint(0, 9))
             else:
                 card += ch
+
         if len(card) < 16:
             card += "".join(str(random.randint(0, 9)) for _ in range(16 - len(card)))
+
         card = card[:16]
 
+        # Mes
         if mes in ["rnd", "xx"]:
             mes_gen = random.randint(1, 12)
             mes_gen = f"{mes_gen:02d}"
         else:
             mes_gen = mes
 
+        # Año
         if ano in ["rnd", "xxxx"]:
             ano_gen = random.randint(2024, 2035)
         else:
             ano_gen = int(ano)
 
+        # CVV
         if cvv in ["rnd", "xxx", "xxxx"]:
             cvv_gen = random.randint(100, 999)
         else:
@@ -146,11 +158,14 @@ def get_bin_info(bin_number: str) -> str:
         return f"⚠️ Error obteniendo BIN info: {e}"
 
 # ==============================
-# HANDLERS
+# MENSAJES PRINCIPALES
 # ==============================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
-    add_user(user.id, user.username or "sin_username")
+
+    if not is_registered(user.id):
+        await update.message.reply_text("🚫 No estás registrado. Contacta al admin.")
+        return
 
     keyboard = [
         [InlineKeyboardButton("TOOLS", callback_data="comida")],
@@ -158,14 +173,22 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("❌ Cerrar", callback_data="cerrar")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-
     await update.effective_message.reply_text(
         "👋 Hola! Bienvenido a tu bot\n\nSelecciona una opción:",
         reply_markup=reply_markup
     )
 
+# ==============================
+# CALLBACKS
+# ==============================
 async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
+    user = update.effective_user
+
+    if not is_registered(user.id):
+        await query.answer("🚫 No estás registrado", show_alert=True)
+        return
+
     await query.answer()
 
     if query.data == "volver_menu":
@@ -194,11 +217,6 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif query.data == "peliculas":
         keyboard = [
             [InlineKeyboardButton("AUTH", callback_data="accion")],
-            [InlineKeyboardButton("CCN", callback_data="comedia")],
-            [InlineKeyboardButton("CHARGED", callback_data="terror")],
-            [InlineKeyboardButton("ESPECIAL", callback_data="romance")],
-            [InlineKeyboardButton("↩️ Volver al menú principal", callback_data="volver_menu")],
-            [InlineKeyboardButton("❌ Cerrar", callback_data="cerrar")]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         await query.edit_message_text(
@@ -206,8 +224,7 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=reply_markup
         )
 
-    elif query.data in ["accion", "comedia", "terror", "romance"]:
-        genero = query.data.capitalize()
+    elif query.data == "accion":
         keyboard = [
             [InlineKeyboardButton("↩️ Volver a películas", callback_data="peliculas")],
             [InlineKeyboardButton("↩️ Volver al menú principal", callback_data="volver_menu")],
@@ -215,31 +232,24 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         await query.edit_message_text(
-            text=f"PRÓXIMAMENTE {genero}: AUN NO HAY GATES.",
+            text="PRÓXIMAMENTE AUTH: AÚN NO HAY GATES.",
             reply_markup=reply_markup
         )
 
     elif query.data == "cerrar":
         await query.edit_message_text("✅ Conversación cerrada.")
 
-    elif query.data.startswith("regen|"):
-        pattern, mes, ano, cvv = query.data.split("|")[1:]
-        tarjetas = cc_gen(pattern, mes, ano, cvv)
-        bin_info = get_bin_info(pattern[:6])
-
-        text = "💳 Tarjetas generadas:\n\n" + "\n".join(tarjetas) + f"\n\n{bin_info}"
-        keyboard = [[InlineKeyboardButton("🔄 Regenerar", callback_data=f"regen|{pattern}|{mes}|{ano}|{cvv}")]]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        await query.edit_message_text(text, reply_markup=reply_markup)
-
+# ==============================
+# GENERADOR
+# ==============================
 async def gen(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     if not is_registered(user.id):
-        await update.effective_message.reply_text("🚫 Debes registrarte primero con /start")
+        await update.message.reply_text("🚫 No estás registrado.")
         return
 
     if not context.args:
-        await update.effective_message.reply_text("Uso: .gen 490129000329xxxx|10|2025|rnd")
+        await update.message.reply_text("Uso: .gen 490129000329xxxx|10|2025|rnd")
         return
 
     try:
@@ -256,57 +266,77 @@ async def gen(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text = "💳 Tarjetas generadas:\n\n" + "\n".join(tarjetas) + f"\n\n{bin_info}"
         keyboard = [[InlineKeyboardButton("🔄 Regenerar", callback_data=f"regen|{pattern}|{mes}|{ano}|{cvv}")]]
         reply_markup = InlineKeyboardMarkup(keyboard)
-        await update.effective_message.reply_text(text, reply_markup=reply_markup)
+
+        await update.message.reply_text(text, reply_markup=reply_markup)
+
     except Exception as e:
-        await update.effective_message.reply_text(f"⚠️ Error: {e}")
+        await update.message.reply_text(f"⚠️ Error: {e}")
 
 # ==============================
-# ADMIN
+# ADMIN PANEL (sin botones)
 # ==============================
-async def ver_usuarios(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def add_user_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
+        await update.message.reply_text("🚫 No eres admin.")
         return
-    users = get_all_users()
-    msg = "👥 Usuarios registrados:\n"
-    msg += "\n".join([f"{u[0]} - @{u[1]}" for u in users]) if users else "Nadie registrado aún."
-    await update.message.reply_text(msg)
 
-async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != ADMIN_ID:
-        return
     if not context.args:
-        await update.message.reply_text("Uso: /broadcast mensaje")
+        await update.message.reply_text("Uso: /add_user <id>")
         return
-    msg = " ".join(context.args)
-    for uid, _ in get_all_users():
-        try:
-            await context.bot.send_message(uid, f"📢 Broadcast:\n{msg}")
-        except:
-            pass
-    await update.message.reply_text("✅ Mensaje enviado a todos.")
+
+    try:
+        uid = int(context.args[0])
+        username = f"user{uid}"
+        add_user(uid, username)
+        await update.message.reply_text(f"✅ Usuario {uid} agregado.")
+    except Exception as e:
+        await update.message.reply_text(f"⚠️ Error: {e}")
 
 async def del_user_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
+        await update.message.reply_text("🚫 No eres admin.")
         return
+
     if not context.args:
         await update.message.reply_text("Uso: /del_user <id>")
         return
-    uid = int(context.args[0])
-    del_user(uid)
-    await update.message.reply_text(f"✅ Usuario {uid} eliminado.")
+
+    try:
+        uid = int(context.args[0])
+        delete_user(uid)
+        await update.message.reply_text(f"🗑 Usuario {uid} eliminado.")
+    except Exception as e:
+        await update.message.reply_text(f"⚠️ Error: {e}")
+
+async def list_users_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        await update.message.reply_text("🚫 No eres admin.")
+        return
+
+    users = list_users()
+    if not users:
+        await update.message.reply_text("📭 No hay usuarios registrados.")
+        return
+
+    text = "👥 Usuarios registrados:\n" + "\n".join([f"{u[0]} ({u[1]})" for u in users])
+    await update.message.reply_text(text)
 
 # ==============================
-# PREFIJO ROUTER
+# ROUTER DE PREFIJOS
 # ==============================
-async def prefixed_commands(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = (update.message.text or "").strip()
+async def prefixed_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = (update.effective_message.text or "").strip()
+    lower = text.lower()
+
     for p in PREFIXES:
-        if text.startswith(p + "start"):
-            return await start(update, context)
-        if text.startswith(p + "gen"):
-            args_str = text[len(p + "gen"):].strip()
+        if lower.startswith(p + "start"):
+            await start(update, context)
+            return
+        if lower.startswith(p + "gen"):
+            args_str = lower[len(p + "gen"):].strip()
             context.args = args_str.split() if args_str else []
-            return await gen(update, context)
+            await gen(update, context)
+            return
 
 # ==============================
 # MAIN
@@ -315,22 +345,19 @@ def main():
     init_db()
     app = Application.builder().token(BOT_TOKEN).build()
 
-    # Comandos normales
+    # Comandos oficiales
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("gen", gen))
-
-    # Admin
-    app.add_handler(CommandHandler("ver_usuarios", ver_usuarios))
-    app.add_handler(CommandHandler("broadcast", broadcast))
+    app.add_handler(CommandHandler("add_user", add_user_cmd))
     app.add_handler(CommandHandler("del_user", del_user_cmd))
+    app.add_handler(CommandHandler("list_users", list_users_cmd))
+
+    # Prefijos personalizados (. ! ? #)
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, prefixed_router))
 
     # Callbacks
     app.add_handler(CallbackQueryHandler(button))
 
-    # Prefijos personalizados
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, prefixed_commands))
-
-    print("🤖 Bot corriendo...")
     app.run_polling()
 
 if __name__ == "__main__":
