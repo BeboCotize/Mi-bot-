@@ -1,1 +1,1 @@
-worker: python solo pruebaa.py
+worker: python bot.py
