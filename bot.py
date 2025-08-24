@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 # 🔹 Helpers
 # ============================
 def check_prefix(text: str, cmd: str):
-    return any(text.startswith(p + cmd) for p in PREFIXES)
+    return any(text.lower().startswith(p + cmd) for p in PREFIXES)
 
 def is_registered(user_id):
     cursor.execute("SELECT * FROM users WHERE user_id = ?", (user_id,))
@@ -47,13 +47,16 @@ def register_user(user_id, name):
         conn.commit()
 
 # ============================
-# 🔹 Handlers
+# 🔹 Handlers Usuario
 # ============================
 async def start_handler(update: Update, context):
     user = update.effective_user
 
     if is_banned(user.id):
-        await update.message.reply_text("🚫 Estás baneado y no puedes usar este bot.")
+        cursor.execute("SELECT reason FROM users WHERE user_id = ?", (user.id,))
+        reason = cursor.fetchone()
+        reason = reason[0] if reason else "Sin motivo"
+        await update.message.reply_text(f"🚫 Estás baneado.\nMotivo: {reason}")
         return
 
     register_user(user.id, user.first_name)
@@ -86,7 +89,7 @@ async def buttons(update: Update, context):
             [InlineKeyboardButton("❌ Cerrar", callback_data="cerrar")]
         ]
         await query.edit_message_text(
-            "🍔 Aquí tienes comida deliciosa",
+            "🍔 Aquí tienes comida deliciosa 🍕🌮🍩",
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
 
@@ -104,6 +107,15 @@ async def buttons(update: Update, context):
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
 
+    elif query.data == "accion":
+        await query.edit_message_text("💥 Películas de acción explosivas y llenas de adrenalina.")
+    elif query.data == "comedia":
+        await query.edit_message_text("😂 Películas de comedia para reír sin parar.")
+    elif query.data == "terror":
+        await query.edit_message_text("😱 Películas de terror que te harán temblar.")
+    elif query.data == "romance":
+        await query.edit_message_text("💘 Películas románticas para los más enamorados.")
+
     elif query.data == "menu":
         keyboard = [
             [InlineKeyboardButton("🍔 Comida", callback_data="comida")],
@@ -119,18 +131,81 @@ async def buttons(update: Update, context):
         await query.delete_message()
 
 # ============================
+# 🔹 Panel Admin
+# ============================
+async def ban(update: Update, context):
+    if update.effective_user.id != ADMIN_ID:
+        return
+    try:
+        user_id = int(context.args[0])
+        reason = " ".join(context.args[1:]) if len(context.args) > 1 else "Sin motivo"
+        cursor.execute("UPDATE users SET banned = 1, reason = ? WHERE user_id = ?", (reason, user_id))
+        conn.commit()
+        await update.message.reply_text(f"✅ Usuario {user_id} baneado.\nMotivo: {reason}")
+    except:
+        await update.message.reply_text("⚠️ Uso: /ban <user_id> <motivo>")
+
+async def unban(update: Update, context):
+    if update.effective_user.id != ADMIN_ID:
+        return
+    try:
+        user_id = int(context.args[0])
+        cursor.execute("UPDATE users SET banned = 0, reason = NULL WHERE user_id = ?", (user_id,))
+        conn.commit()
+        await update.message.reply_text(f"✅ Usuario {user_id} desbaneado.")
+    except:
+        await update.message.reply_text("⚠️ Uso: /unban <user_id>")
+
+async def users(update: Update, context):
+    if update.effective_user.id != ADMIN_ID:
+        return
+    cursor.execute("SELECT user_id, name, banned FROM users")
+    data = cursor.fetchall()
+    if not data:
+        await update.message.reply_text("📭 No hay usuarios registrados.")
+        return
+    text = "📋 Lista de usuarios:\n\n"
+    for u in data:
+        status = "🚫 Baneado" if u[2] == 1 else "✅ Activo"
+        text += f"• {u[1]} ({u[0]}) - {status}\n"
+    await update.message.reply_text(text)
+
+async def broadcast(update: Update, context):
+    if update.effective_user.id != ADMIN_ID:
+        return
+    msg = " ".join(context.args)
+    if not msg:
+        await update.message.reply_text("⚠️ Uso: /broadcast <mensaje>")
+        return
+    cursor.execute("SELECT user_id FROM users WHERE banned = 0")
+    for (uid,) in cursor.fetchall():
+        try:
+            await context.bot.send_message(uid, f"📢 {msg}")
+        except:
+            pass
+    await update.message.reply_text("✅ Mensaje enviado a todos los usuarios.")
+
+# ============================
 # 🔹 Main
 # ============================
 def main():
     app = Application.builder().token(TOKEN).build()
 
-    # ✅ /start oficial
+    # ✅ Start oficial
     app.add_handler(CommandHandler("start", start_handler))
 
-    # ✅ prefijos (.start, ?start, !start, #start)
+    # ✅ Prefijos para start
     app.add_handler(MessageHandler(filters.TEXT & filters.Regex(r"^[\.\?!#]start"), prefix_handler))
 
+    # ✅ Botones
     app.add_handler(CallbackQueryHandler(buttons))
+
+    # ✅ Comandos admin + prefijos
+    for cmd, func in {
+        "ban": ban, "unban": unban, "users": users, "broadcast": broadcast
+    }.items():
+        app.add_handler(CommandHandler(cmd, func))
+        app.add_handler(MessageHandler(filters.TEXT & filters.Regex(rf"^[\.\?!#]{cmd}"), func))
 
     logger.info("✅ Bot iniciado")
     app.run_polling()
