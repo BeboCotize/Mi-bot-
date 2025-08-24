@@ -9,7 +9,7 @@ from telegram.ext import (
 # CONFIGURACIÓN
 # =====================
 TOKEN = "8271445453:AAFt-Hxd-YBlVWi5pRnAPhGcYPjvKILTNJw"
-ADMIN_ID = 6629555218  # <-- pon tu ID de Telegram
+ADMIN_ID =6629555218  # <-- pon tu ID de Telegram
 
 # Bases de datos en memoria
 registered_users = {}
