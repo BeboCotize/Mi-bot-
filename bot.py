@@ -1,380 +1,230 @@
 import os
-import re
-import random
-import asyncio
-from datetime import datetime, timedelta, timezone
-
-from dotenv import load_dotenv
-from telegram import (
-    Update, InlineKeyboardMarkup, InlineKeyboardButton, ChatAction
-)
+import logging
+import psycopg2
+from datetime import datetime, timedelta
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.constants import ChatAction
 from telegram.ext import (
-    ApplicationBuilder, ContextTypes, CommandHandler, MessageHandler,
-    CallbackQueryHandler, filters, ApplicationHandlerStop
+    Application, CommandHandler, CallbackQueryHandler,
+    ContextTypes, MessageHandler, filters
 )
-import asyncpg
 
-# -------------------- CONFIG --------------------
-load_dotenv()  # opcional: permite usar .env localmente
+# ------------------------------
+# CONFIG
+# ------------------------------
+logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+                    level=logging.INFO)
 
-BOT_TOKEN = os.getenv("8271445453:AAGkEThWtDCPRfEFOUfzLBxc3lIriZ9SvsM") or os.getenv("TELEGRAM_BOT_TOKEN")
-ADMIN_ID = int(os.getenv("ADMIN_ID", "6629555218"))
+TOKEN = os.getenv("8271445453:AAGkEThWtDCPRfEFOUfzLBxc3lIriZ9SvsM")
+ADMIN_ID = 6629555218  # Tu ID
 
-# Postgres desde Railway (auto-variables)
-PGHOST = os.getenv("PGHOST") or os.getenv("POSTGRES_HOST")
-PGPORT = int(os.getenv("PGPORT", "5432"))
-PGUSER = os.getenv("PGUSER")
-PGPASSWORD = os.getenv("PGPASSWORD")
-PGDATABASE = os.getenv("PGDATABASE")
+DB_URL = os.getenv("DATABASE_URL")
 
-# Antispam
-SPAM_WINDOW_SEC = 30     # ventana
-SPAM_MAX_CMDS = 20       # umbral
-BAN_HOURS = 5            # duración ban
+# Conexión a PostgreSQL
+conn = psycopg2.connect(DB_URL, sslmode="require")
+cur = conn.cursor()
 
-# ------------------------------------------------
+# Crear tablas si no existen
+cur.execute("""
+CREATE TABLE IF NOT EXISTS bans (
+    user_id BIGINT PRIMARY KEY,
+    reason TEXT,
+    until TIMESTAMP
+);
+""")
+cur.execute("""
+CREATE TABLE IF NOT EXISTS gens (
+    id SERIAL PRIMARY KEY,
+    user_id BIGINT,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+""")
+conn.commit()
 
-# Conexión global a Postgres (pool)
-db_pool: asyncpg.Pool | None = None
+# Control anti-spam (memoria)
+user_activity = {}
 
+# ------------------------------
+# Funciones DB
+# ------------------------------
+def ban_user(user_id: int, reason: str, hours: int):
+    until = datetime.utcnow() + timedelta(hours=hours)
+    cur.execute("INSERT INTO bans (user_id, reason, until) VALUES (%s, %s, %s) ON CONFLICT (user_id) DO UPDATE SET reason = EXCLUDED.reason, until = EXCLUDED.until",
+                (user_id, reason, until))
+    conn.commit()
 
-# -------------------- DB UTILS --------------------
-async def init_db():
-    global db_pool
-    db_pool = await asyncpg.create_pool(
-        host=PGHOST, port=PGPORT, user=PGUSER,
-        password=PGPASSWORD, database=PGDATABASE,
-        min_size=1, max_size=5
-    )
-    async with db_pool.acquire() as conn:
-        await conn.execute("""
-        CREATE TABLE IF NOT EXISTS user_bans (
-            user_id BIGINT PRIMARY KEY,
-            reason TEXT NOT NULL,
-            expires_at TIMESTAMPTZ NOT NULL
-        );
-        CREATE TABLE IF NOT EXISTS spam_log (
-            user_id BIGINT NOT NULL,
-            ts TIMESTAMPTZ NOT NULL
-        );
-        CREATE INDEX IF NOT EXISTS idx_spamlog_user_ts ON spam_log (user_id, ts);
-        """)
+def unban_user(user_id: int):
+    cur.execute("DELETE FROM bans WHERE user_id = %s", (user_id,))
+    conn.commit()
 
+def is_banned(user_id: int):
+    cur.execute("SELECT until FROM bans WHERE user_id = %s", (user_id,))
+    row = cur.fetchone()
+    if row:
+        until = row[0]
+        if until > datetime.utcnow():
+            return True
+        else:
+            unban_user(user_id)  # expiro
+    return False
 
-async def is_banned(user_id: int) -> tuple[bool, str | None, datetime | None]:
-    """Devuelve (ban_activo, razon, expira_en)"""
-    async with db_pool.acquire() as conn:
-        row = await conn.fetchrow(
-            "SELECT reason, expires_at FROM user_bans WHERE user_id=$1", user_id
+def save_gen(user_id: int):
+    cur.execute("INSERT INTO gens (user_id) VALUES (%s)", (user_id,))
+    conn.commit()
+
+# ------------------------------
+# Anti-Spam Middleware
+# ------------------------------
+async def check_spam(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    now = datetime.utcnow()
+
+    if is_banned(user_id):
+        await update.message.reply_text("🚫 Estás baneado temporalmente por spam.")
+        return False
+
+    # Registrar actividad
+    history = user_activity.get(user_id, [])
+    history = [t for t in history if (now - t).seconds < 30]  # solo últimos 30s
+    history.append(now)
+    user_activity[user_id] = history
+
+    if len(history) > 20:
+        ban_user(user_id, "Spam de comandos", 5)  # 5 horas
+        await context.bot.send_message(
+            chat_id=ADMIN_ID,
+            text=f"⚠️ Usuario {user_id} baneado por spam (5h)."
         )
-        if not row:
-            return False, None, None
-        reason, expires = row["reason"], row["expires_at"]
-        now = datetime.now(timezone.utc)
-        if expires > now:
-            return True, reason, expires
-        # Si ya expiró, limpia
-        await conn.execute("DELETE FROM user_bans WHERE user_id=$1", user_id)
-        return False, None, None
+        await update.message.reply_text("🚫 Has sido bloqueado por spam (5 horas).")
+        return False
 
+    return True
 
-async def ban_user(user_id: int, reason: str, hours: int = BAN_HOURS):
-    until = datetime.now(timezone.utc) + timedelta(hours=hours)
-    async with db_pool.acquire() as conn:
-        await conn.execute("""
-            INSERT INTO user_bans (user_id, reason, expires_at)
-            VALUES ($1,$2,$3)
-            ON CONFLICT (user_id) DO UPDATE
-            SET reason=EXCLUDED.reason, expires_at=EXCLUDED.expires_at
-        """, user_id, reason, until)
-    return until
-
-
-async def unban_user(user_id: int) -> bool:
-    async with db_pool.acquire() as conn:
-        res = await conn.execute("DELETE FROM user_bans WHERE user_id=$1", user_id)
-    return res and res.lower().startswith("delete")
-
-
-async def log_event(user_id: int):
-    async with db_pool.acquire() as conn:
-        await conn.execute(
-            "INSERT INTO spam_log (user_id, ts) VALUES ($1, $2)",
-            user_id, datetime.now(timezone.utc)
-        )
-
-
-async def count_recent(user_id: int, seconds: int) -> int:
-    async with db_pool.acquire() as conn:
-        row = await conn.fetchrow("""
-            SELECT COUNT(*) as c
-            FROM spam_log
-            WHERE user_id=$1 AND ts > (NOW() AT TIME ZONE 'UTC') - $2::INTERVAL
-        """, user_id, f"{seconds} seconds")
-    return int(row["c"]) if row else 0
-
-
-# -------------------- ANTISPAM (middleware) --------------------
-async def guard_antispam(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Corre antes que todo. Checa ban y antispam para TODOS los comandos/msgs."""
-    user = update.effective_user
-    if not user:
-        return
-
-    uid = user.id
-
-    # 1) Si ya está baneado, corta
-    banned, reason, expires = await is_banned(uid)
-    if banned:
-        if update.effective_message:
-            await update.effective_message.reply_text(
-                f"🚫 Estás bloqueado.\nMotivo: {reason}\n"
-                f"⏳ Expira: {expires.astimezone().strftime('%Y-%m-%d %H:%M:%S')}"
-            )
-        raise ApplicationHandlerStop
-
-    # 2) Log + cuenta ventana
-    await log_event(uid)
-    n = await count_recent(uid, SPAM_WINDOW_SEC)
-
-    if n > SPAM_MAX_CMDS:
-        reason = f"Spam: más de {SPAM_MAX_CMDS} comandos en {SPAM_WINDOW_SEC}s"
-        until = await ban_user(uid, reason, BAN_HOURS)
-
-        # Avisar al usuario
-        if update.effective_message:
-            await update.effective_message.reply_text(
-                f"🚫 Has sido bloqueado por *{BAN_HOURS} horas*.\n"
-                f"Motivo: {reason}",
-                parse_mode="Markdown"
-            )
-
-        # Avisar al admin
-        try:
-            await context.bot.send_message(
-                chat_id=ADMIN_ID,
-                text=(
-                    "⚠️ *Usuario bloqueado por SPAM*\n"
-                    f"• ID: `{uid}`\n"
-                    f"• Motivo: {reason}\n"
-                    f"• Expira: {until.astimezone().strftime('%Y-%m-%d %H:%M:%S')}"
-                ),
-                parse_mode="Markdown"
-            )
-        except Exception:
-            pass
-
-        raise ApplicationHandlerStop
-
-
-# -------------------- HELPERS UI --------------------
-def main_menu(admin: bool = False) -> InlineKeyboardMarkup:
-    buttons = [
-        [InlineKeyboardButton("🎬 Películas", callback_data="menu_movies")],
-        [InlineKeyboardButton("🍔 Comida", callback_data="menu_food")],
-    ]
-    if admin:
-        buttons.append([InlineKeyboardButton("🛡️ Panel admin", callback_data="menu_admin")])
-    return InlineKeyboardMarkup(buttons)
-
-
-def movies_menu() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("🎞️ Estrenos", url="https://www.imdb.com/movies-in-theaters/")],
-        [InlineKeyboardButton("⭐ Top 250", url="https://www.imdb.com/chart/top/")],
-        [InlineKeyboardButton("🔙 Volver", callback_data="back_home")]
-    ])
-
-
-def food_menu() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("🍕 Pizza", url="https://www.google.com/maps/search/pizza+")],
-        [InlineKeyboardButton("🍔 Hamburguesas", url="https://www.google.com/maps/search/hamburguesas+")],
-        [InlineKeyboardButton("🍣 Sushi", url="https://www.google.com/maps/search/sushi+")],
-        [InlineKeyboardButton("🔙 Volver", callback_data="back_home")]
-    ])
-
-
-def admin_menu() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("🧹 Unban (escribe: unban <ID>)", callback_data="noop")],
-        [InlineKeyboardButton("🔙 Volver", callback_data="back_home")]
-    ])
-
-
-# -------------------- COMANDOS --------------------
+# ------------------------------
+# START
+# ------------------------------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
-    if user.id != ADMIN_ID:
-        await update.message.reply_text("🔒 Bot privado.")
-        return
+    if is_banned(update.effective_user.id):
+        return await update.message.reply_text("🚫 Estás baneado temporalmente.")
 
+    keyboard = [
+        [InlineKeyboardButton("🎬 Películas", callback_data="peliculas")],
+        [InlineKeyboardButton("🍔 Comida", callback_data="comida")],
+        [InlineKeyboardButton("❌ Cerrar", callback_data="cerrar")]
+    ]
     await update.message.reply_text(
-        "¡Bienvenido, admin! 👑\nElige una opción:",
-        reply_markup=main_menu(admin=True)
+        f"👋 Hola {update.effective_user.first_name}, bienvenido al bot!",
+        reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
+# ------------------------------
+# Botones
+# ------------------------------
+async def botones(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
 
-async def handle_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    q = update.callback_query
-    await q.answer()
+    if query.data == "peliculas":
+        keyboard = [
+            [InlineKeyboardButton("🎥 Acción", callback_data="accion")],
+            [InlineKeyboardButton("😂 Comedia", callback_data="comedia")],
+            [InlineKeyboardButton("😭 Drama", callback_data="drama")],
+            [InlineKeyboardButton("👽 Ciencia Ficción", callback_data="scifi")],
+            [InlineKeyboardButton("🔙 Volver atrás", callback_data="menu")],
+        ]
+        await query.edit_message_text("📂 Categoría: Películas", reply_markup=InlineKeyboardMarkup(keyboard))
 
-    if q.data == "menu_movies":
-        await q.edit_message_text("🎬 Navega películas:", reply_markup=movies_menu())
+    elif query.data == "accion":
+        await query.edit_message_text("💥 Recomendación de películas de Acción:\n- John Wick\n- Misión Imposible\n- Mad Max Fury Road")
 
-    elif q.data == "menu_food":
-        await q.edit_message_text("🍔 Opciones de comida:", reply_markup=food_menu())
+    elif query.data == "comedia":
+        await query.edit_message_text("😂 Recomendación de películas de Comedia:\n- ¿Qué pasó ayer?\n- Superbad\n- Scary Movie")
 
-    elif q.data == "menu_admin":
-        if q.from_user.id != ADMIN_ID:
-            await q.edit_message_text("⛔ Solo admin.", reply_markup=main_menu())
-            return
-        await q.edit_message_text("🛡️ Panel de administración:", reply_markup=admin_menu())
+    elif query.data == "drama":
+        await query.edit_message_text("😭 Recomendación de películas de Drama:\n- El Padrino\n- En busca de la felicidad\n- La lista de Schindler")
 
-    elif q.data == "back_home":
-        is_admin = q.from_user.id == ADMIN_ID
-        await q.edit_message_text("Menú principal:", reply_markup=main_menu(admin=is_admin))
+    elif query.data == "scifi":
+        await query.edit_message_text("👽 Recomendación de películas de Ciencia Ficción:\n- Matrix\n- Star Wars\n- Interstellar")
 
-    else:
-        # noop
-        pass
+    elif query.data == "comida":
+        keyboard = [
+            [InlineKeyboardButton("🍕 Pizza", callback_data="pizza")],
+            [InlineKeyboardButton("🍔 Hamburguesa", callback_data="hamburguesa")],
+            [InlineKeyboardButton("🍣 Sushi", callback_data="sushi")],
+            [InlineKeyboardButton("🔙 Volver atrás", callback_data="menu")],
+        ]
+        await query.edit_message_text("📂 Categoría: Comida", reply_markup=InlineKeyboardMarkup(keyboard))
 
+    elif query.data == "pizza":
+        await query.edit_message_text("🍕 Pizza: deliciosa con queso y pepperoni.")
+    elif query.data == "hamburguesa":
+        await query.edit_message_text("🍔 Hamburguesa: clásica con carne y papas.")
+    elif query.data == "sushi":
+        await query.edit_message_text("🍣 Sushi: fresco y saludable.")
 
-# ---------- Prefijo "." (solo start es sin prefijo) ----------
-async def dot_commands(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = (update.message.text or "").strip()
-    if not text.startswith("."):
+    elif query.data == "menu":
+        keyboard = [
+            [InlineKeyboardButton("🎬 Películas", callback_data="peliculas")],
+            [InlineKeyboardButton("🍔 Comida", callback_data="comida")],
+            [InlineKeyboardButton("❌ Cerrar", callback_data="cerrar")]
+        ]
+        await query.edit_message_text("🏠 Menú principal", reply_markup=InlineKeyboardMarkup(keyboard))
+
+    elif query.data == "cerrar":
+        await query.edit_message_text("✅ Conversación cerrada.")
+
+# ------------------------------
+# Generador
+# ------------------------------
+async def gen(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await check_spam(update, context):
         return
 
-    cmd, *args = text[1:].split()
-    cmd = cmd.lower()
+    save_gen(update.effective_user.id)
+    await update.message.reply_text("💳 Generador: [Tarjeta Ficticia] 1234-5678-9012-3456")
 
-    # .gen  -> generador de tarjeta
-    if cmd == "gen":
-        # Simulación de tarjeta (texto simple)
-        brand = random.choice(["VISA", "MASTERCARD"])
-        number = "".join(str(random.randint(0, 9)) for _ in range(16))
-        exp_m = random.randint(1, 12)
-        exp_y = random.randint(25, 32)
-        cvv = random.randint(100, 999)
-        await update.message.reply_text(
-            f"💳 *Tarjeta Generada*\n"
-            f"• Marca: {brand}\n"
-            f"• Número: `{number}`\n"
-            f"• Expira: {exp_m:02d}/{exp_y}\n"
-            f"• CVV: `{cvv}`",
-            parse_mode="Markdown"
-        )
-        return
-
-    # .ban <id> <razón...>  (solo admin)
-    if cmd == "ban":
-        if update.effective_user.id != ADMIN_ID:
-            await update.message.reply_text("⛔ Solo admin.")
-            return
-        if not args:
-            await update.message.reply_text("Uso: `.ban <user_id> <razón opcional>`")
-            return
-        try:
-            uid = int(args[0])
-        except ValueError:
-            await update.message.reply_text("ID inválido.")
-            return
-        reason = " ".join(args[1:]).strip() or "Ban manual por admin"
-        until = await ban_user(uid, reason, BAN_HOURS)
-        await update.message.reply_text(
-            f"✅ Usuario `{uid}` bloqueado hasta {until.astimezone().strftime('%Y-%m-%d %H:%M:%S')}",
-            parse_mode="Markdown"
-        )
-        try:
-            await context.bot.send_message(
-                chat_id=uid,
-                text=f"⛔ Has sido bloqueado por el admin.\nMotivo: {reason}"
-            )
-        except Exception:
-            pass
-        return
-
-    # .unban <id> (alias de /unban)
-    if cmd == "unban":
-        await unban_cmd(update, context, args_only=True)
-        return
-
-    await update.message.reply_text("❓ Comando desconocido con prefijo '.'")
-
-
-# /unban <id>  o texto simple: "unban <id>"
-async def unban_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE, args_only: bool = False):
+# ------------------------------
+# BAN / UNBAN (solo admin)
+# ------------------------------
+async def ban(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
-        await update.message.reply_text("⛔ Solo admin.")
-        return
+        return await update.message.reply_text("🚫 No tienes permiso.")
 
-    # cuando viene de .unban ya nos pasan los args en message
-    args = context.args if not args_only else (update.message.text.split()[1:] if len(update.message.text.split()) > 1 else [])
+    try:
+        user_id = int(context.args[0])
+        reason = " ".join(context.args[1:]) or "Sin razón"
+        ban_user(user_id, reason, 9999)  # prácticamente permanente
+        await update.message.reply_text(f"✅ Usuario {user_id} baneado.\n📝 Razón: {reason}")
+    except:
+        await update.message.reply_text("⚠️ Uso: /ban <user_id> <razón>")
 
-    target_id = None
-    if args:
-        try:
-            target_id = int(args[0])
-        except ValueError:
-            pass
-    else:
-        # quizá vino como texto "unban 123"
-        m = re.match(r"^\s*unban\s+(\d+)\s*$", (update.message.text or ""), re.I)
-        if m:
-            target_id = int(m.group(1))
+async def unban(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        return await update.message.reply_text("🚫 No tienes permiso.")
 
-    if not target_id:
-        await update.message.reply_text("Uso: `/unban <user_id>` o `unban <user_id>`", parse_mode="Markdown")
-        return
+    try:
+        user_id = int(context.args[0])
+        unban_user(user_id)
+        await update.message.reply_text(f"✅ Usuario {user_id} desbaneado.")
+    except:
+        await update.message.reply_text("⚠️ Uso: /unban <user_id>")
 
-    ok = await unban_user(target_id)
-    if ok:
-        await update.message.reply_text(f"✅ Usuario `{target_id}` desbaneado.", parse_mode="Markdown")
-        try:
-            await context.bot.send_message(chat_id=target_id, text="✅ Has sido desbaneado por el admin.")
-        except Exception:
-            pass
-    else:
-        await update.message.reply_text("ℹ️ Ese usuario no estaba baneado.")
+# ------------------------------
+# MAIN
+# ------------------------------
+def main():
+    if not TOKEN:
+        raise ValueError("⚠️ No se encontró BOT_TOKEN en las variables de entorno")
 
+    app = Application.builder().token(TOKEN).build()
 
-# Para que “unban <ID>” como texto simple funcione
-async def plain_unban_listener(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = (update.message.text or "").strip()
-    if re.match(r"^unban\s+\d+\s*$", text, re.I):
-        await unban_cmd(update, context)
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("gen", gen))
+    app.add_handler(CommandHandler("ban", ban))
+    app.add_handler(CommandHandler("unban", unban))
+    app.add_handler(CallbackQueryHandler(botones))
 
-
-# -------------------- MAIN --------------------
-async def on_startup(app):
-    await init_db()
-    print("DB lista ✅")
-
-def build_application():
-    app = ApplicationBuilder().token(BOT_TOKEN).post_init(on_startup).build()
-
-    # Middleware de antispam/bans (grupo 0)
-    app.add_handler(MessageHandler(filters.ALL, guard_antispam), group=0)
-
-    # Comandos
-    app.add_handler(CommandHandler("start", start), group=1)
-    app.add_handler(CommandHandler("unban", unban_cmd), group=1)
-
-    # Texto simple “unban <id>”
-    app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), plain_unban_listener), group=1)
-
-    # Prefijo "."
-    app.add_handler(MessageHandler(filters.TEXT & filters.Regex(r"^\."), dot_commands), group=1)
-
-    # Botones
-    app.add_handler(CallbackQueryHandler(handle_buttons), group=1)
-
-    return app
-
+    app.run_polling()
 
 if __name__ == "__main__":
-    if not BOT_TOKEN:
-        raise SystemExit("❌ Faltó BOT_TOKEN en variables de entorno.")
-    app = build_application()
-    app.run_polling(close_loop=False)
+    main()
