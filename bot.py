@@ -1,133 +1,191 @@
 import os
+import sqlite3
 import logging
-import json
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import (
+    Update,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup
+)
 from telegram.ext import (
     Application,
     CommandHandler,
     CallbackQueryHandler,
     ContextTypes,
+    MessageHandler,
+    filters
 )
-from pathlib import Path
 
-# ----------------- LOGGING -----------------
-logging.basicConfig(
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
-)
+# Logging
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# ----------------- TOKEN -----------------
-TOKEN = os.getenv("8271445453:AAGkEThWtDCPRfEFOUfzLBxc3lIriZ9SvsM")  # En Railway lo pasas como variable de entorno
+# Base de datos SQLite
+DB_PATH = "users.db"
 
-# ----------------- BASE DE DATOS -----------------
-DB_FILE = Path("users.json")
+def init_db():
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            user_id INTEGER PRIMARY KEY,
+            username TEXT,
+            banned INTEGER DEFAULT 0,
+            reason TEXT
+        )
+    """)
+    conn.commit()
+    conn.close()
 
-def load_db():
-    if DB_FILE.exists():
-        with open(DB_FILE, "r") as f:
-            return json.load(f)
-    return {"users": {}, "banned": {}}
+def add_user(user_id, username):
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("INSERT OR IGNORE INTO users (user_id, username) VALUES (?,?)", (user_id, username))
+    conn.commit()
+    conn.close()
 
-def save_db(db):
-    with open(DB_FILE, "w") as f:
-        json.dump(db, f, indent=2)
+def is_banned(user_id):
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("SELECT banned, reason FROM users WHERE user_id=?", (user_id,))
+    row = c.fetchone()
+    conn.close()
+    return row if row else (0, None)
 
-db = load_db()
+def ban_user(user_id, reason="Sin razón"):
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("UPDATE users SET banned=1, reason=? WHERE user_id=?", (reason, user_id))
+    conn.commit()
+    conn.close()
 
-# ----------------- FUNCIONES DE USUARIO -----------------
-def is_registered(user_id: int) -> bool:
-    return str(user_id) in db["users"]
+def unban_user(user_id):
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("UPDATE users SET banned=0, reason=NULL WHERE user_id=?", (user_id,))
+    conn.commit()
+    conn.close()
 
-def is_banned(user_id: int) -> bool:
-    return str(user_id) in db["banned"]
+def get_all_users():
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("SELECT user_id, username, banned, reason FROM users")
+    users = c.fetchall()
+    conn.close()
+    return users
 
-def register_user(user_id: int, username: str):
-    db["users"][str(user_id)] = {"username": username}
-    save_db(db)
+# Panel admin (cambia tu ID aquí)
+ADMIN_ID = 123456789
 
-def ban_user(user_id: int, reason: str):
-    db["banned"][str(user_id)] = {"reason": reason}
-    if str(user_id) in db["users"]:
-        del db["users"][str(user_id)]
-    save_db(db)
-
-def unban_user(user_id: int):
-    if str(user_id) in db["banned"]:
-        del db["banned"][str(user_id)]
-    save_db(db)
-
-# ----------------- HANDLERS -----------------
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
-
-    if is_banned(user.id):
-        reason = db["banned"][str(user.id)]["reason"]
-        await update.message.reply_text(f"🚫 Estás baneado.\nMotivo: {reason}")
-        return
-
-    if not is_registered(user.id):
-        register_user(user.id, user.username or user.first_name)
-        await update.message.reply_text(f"✅ Bienvenido {user.first_name}, estás registrado.")
-
+# Mensaje principal
+def main_menu(username):
     keyboard = [
-        [InlineKeyboardButton("🍔 Comida", callback_data="comida")],
         [InlineKeyboardButton("🎬 Películas", callback_data="peliculas")],
         [InlineKeyboardButton("❌ Cerrar", callback_data="cerrar")]
     ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
+    return (
+        f"👋 Bienvenido {username}!\n\n"
+        "Usa el menú para navegar."
+    ), InlineKeyboardMarkup(keyboard)
 
-    await update.message.reply_text(
-        f"👋 Hola {user.first_name}, usa el menú de abajo:",
-        reply_markup=reply_markup
-    )
+# Botón de películas
+def peliculas_menu():
+    keyboard = [
+        [InlineKeyboardButton("🎥 Acción", callback_data="accion")],
+        [InlineKeyboardButton("😂 Comedia", callback_data="comedia")],
+        [InlineKeyboardButton("😱 Terror", callback_data="terror")],
+        [InlineKeyboardButton("❤️ Romance", callback_data="romance")],
+        [InlineKeyboardButton("⬅️ Volver atrás", callback_data="volver")],
+        [InlineKeyboardButton("❌ Cerrar", callback_data="cerrar")]
+    ]
+    return "🎬 Elige una categoría de películas:", InlineKeyboardMarkup(keyboard)
 
-async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
+# Start command
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    banned, reason = is_banned(user.id)
 
-    if query.data == "comida":
-        await query.edit_message_text("🍔 Aquí tienes comida deliciosa.\n\n🔙 Usa el menú para volver.")
-    elif query.data == "peliculas":
-        keyboard = [
-            [InlineKeyboardButton("🎥 Acción", callback_data="accion")],
-            [InlineKeyboardButton("😂 Comedia", callback_data="comedia")],
-            [InlineKeyboardButton("😱 Terror", callback_data="terror")],
-            [InlineKeyboardButton("🎭 Drama", callback_data="drama")],
-            [InlineKeyboardButton("🔙 Volver atrás", callback_data="volver")],
-            [InlineKeyboardButton("❌ Cerrar", callback_data="cerrar")]
-        ]
-        await query.edit_message_text("🎬 Selecciona un género de películas:", reply_markup=InlineKeyboardMarkup(keyboard))
-    elif query.data == "volver":
-        keyboard = [
-            [InlineKeyboardButton("🍔 Comida", callback_data="comida")],
-            [InlineKeyboardButton("🎬 Películas", callback_data="peliculas")],
-            [InlineKeyboardButton("❌ Cerrar", callback_data="cerrar")]
-        ]
-        await query.edit_message_text("⬅️ Has vuelto al menú principal.", reply_markup=InlineKeyboardMarkup(keyboard))
-    elif query.data == "cerrar":
-        await query.delete_message()
-    else:
-        await query.edit_message_text(f"📌 Has elegido {query.data.capitalize()}.")
+    if banned:
+        await update.message.reply_text(f"🚫 Estás baneado.\nRazón: {reason}")
+        return
 
-# ----------------- ADMIN -----------------
-ADMIN_ID = 123456789  # pon tu ID de Telegram aquí
+    add_user(user.id, user.username or "Sin username")
+    text, keyboard = main_menu(user.first_name)
+    await update.message.reply_text(text, reply_markup=keyboard)
 
-async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# Panel admin
+async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
         return
-    keyboard = [
-        [InlineKeyboardButton("👥 Lista de usuarios", callback_data="list_users")],
-        [InlineKeyboardButton("🚫 Banear", callback_data="ban")],
-        [InlineKeyboardButton("♻️ Desbanear", callback_data="unban")]
-    ]
-    await update.message.reply_text("⚙️ Panel de administrador:", reply_markup=InlineKeyboardMarkup(keyboard))
+    users = get_all_users()
+    msg = "👑 Panel Admin\n\nUsuarios:\n"
+    for u in users:
+        status = "🚫 Baneado" if u[2] else "✅ Activo"
+        reason = f" (Razón: {u[3]})" if u[3] else ""
+        msg += f"• {u[1]} [{u[0]}] - {status}{reason}\n"
+    await update.message.reply_text(msg or "📭 No hay usuarios")
 
-# ----------------- MAIN -----------------
+# Ban user
+async def ban_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        return
+    try:
+        user_id = int(context.args[0])
+        reason = " ".join(context.args[1:]) or "Sin razón"
+        ban_user(user_id, reason)
+        await update.message.reply_text(f"🚫 Usuario {user_id} baneado.\nRazón: {reason}")
+    except:
+        await update.message.reply_text("Uso: .ban <user_id> <razón>")
+
+# Unban user
+async def unban_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        return
+    try:
+        user_id = int(context.args[0])
+        unban_user(user_id)
+        await update.message.reply_text(f"✅ Usuario {user_id} desbaneado.")
+    except:
+        await update.message.reply_text("Uso: .unban <user_id>")
+
+# CallbackQueryHandler
+async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    user = update.effective_user
+    await query.answer()
+
+    if query.data == "peliculas":
+        text, keyboard = peliculas_menu()
+        await query.edit_message_text(text, reply_markup=keyboard)
+
+    elif query.data == "volver":
+        text, keyboard = main_menu(user.first_name)
+        await query.edit_message_text(text, reply_markup=keyboard)
+
+    elif query.data == "cerrar":
+        await query.edit_message_text("❌ Conversación cerrada.")
+
+    elif query.data in ["accion", "comedia", "terror", "romance"]:
+        await query.edit_message_text(f"🎬 Has elegido *{query.data.capitalize()}*", parse_mode="Markdown")
+
+# Main
 def main():
+    init_db()
+    TOKEN = os.getenv("BOT_TOKEN")
+    if not TOKEN:
+        raise ValueError("⚠️ No se encontró BOT_TOKEN en las variables de entorno")
+
     application = Application.builder().token(TOKEN).build()
 
-    application.add_handler(CommandHandler(["start", ".start"], start))
-    application.add_handler(CommandHandler(["admin", ".admin"], admin))
+    # Handlers de start con prefijos
+    for cmd in ["start", ".start", "!start", "?start"]:
+        application.add_handler(CommandHandler(cmd, start))
+
+    # Admin commands
+    application.add_handler(CommandHandler(".admin", admin_panel))
+    application.add_handler(CommandHandler(".ban", ban_command))
+    application.add_handler(CommandHandler(".unban", unban_command))
+
+    # Botones
     application.add_handler(CallbackQueryHandler(button_handler))
 
     application.run_polling()
