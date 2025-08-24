@@ -42,7 +42,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         [InlineKeyboardButton("🍔 Comida", callback_data="comida")],
         [InlineKeyboardButton("🎬 Películas", callback_data="peliculas")],
-        [InlineKeyboardButton("🛠️ Gates / Tools", callback_data="gates")]
+        [InlineKeyboardButton("❌ Cerrar", callback_data="cerrar")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text("📍 Menú Principal:", reply_markup=reply_markup)
@@ -94,21 +94,16 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ]
         await query.edit_message_text(f"🎞️ Lista de películas de {genero}.", reply_markup=InlineKeyboardMarkup(keyboard))
 
-    elif query.data == "gates":
-        keyboard = [
-            [InlineKeyboardButton("🔑 Opción 1", callback_data="gate1")],
-            [InlineKeyboardButton("🔑 Opción 2", callback_data="gate2")],
-            [InlineKeyboardButton("⬅️ Volver atrás", callback_data="menu_principal")]
-        ]
-        await query.edit_message_text("🛠️ Opciones de Gates:", reply_markup=InlineKeyboardMarkup(keyboard))
-
     elif query.data == "menu_principal":
         keyboard = [
             [InlineKeyboardButton("🍔 Comida", callback_data="comida")],
             [InlineKeyboardButton("🎬 Películas", callback_data="peliculas")],
-            [InlineKeyboardButton("🛠️ Gates / Tools", callback_data="gates")]
+            [InlineKeyboardButton("❌ Cerrar", callback_data="cerrar")]
         ]
         await query.edit_message_text("📍 Menú Principal:", reply_markup=InlineKeyboardMarkup(keyboard))
+
+    elif query.data == "cerrar":
+        await query.edit_message_text("✅ Conversación cerrada. Usa /start si quieres volver a abrir el menú.")
 
 # ---------------- PREFIJO HANDLER ----------------
 async def prefixed_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
