@@ -1,9 +1,8 @@
 import os
 import logging
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
-from .antispam import antispam_handler
-from .handlers import start, help_command
-
+from antispam import antispam_handler
+from handlers import start, help_command
 
 # Configuración de logs
 logging.basicConfig(
