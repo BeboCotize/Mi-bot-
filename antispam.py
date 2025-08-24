@@ -1,4 +1,4 @@
-from . import db
+from db import ban_user, is_banned, unban_user
 from telegram import Update
 from telegram.ext import CallbackContext
 
