@@ -1,4 +1,4 @@
-import db
+from . import db
 from telegram import Update
 from telegram.ext import CallbackContext
 
