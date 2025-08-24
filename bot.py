@@ -13,7 +13,7 @@ from telegram.ext import (
 
 # --- CONFIGURACIÓN ---
 TOKEN = os.getenv("8271445453:AAFt-Hxd-YBlVWi5pRnAPhGcYPjvKILTNJw")  # Usa variable de entorno en Railway
-ADMIN_ID = 6629555218  # Reemplázalo con tu ID de admin
+ADMIN_ID =6629555218  # Reemplázalo con tu ID de admin
 
 USERS_FILE = "users.json"
 BANNED_FILE = "banned.json"
