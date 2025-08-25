@@ -1,44 +1,28 @@
-# bot.py
-import logging
-from telegram.ext import Application, CommandHandler, MessageHandler, filters
-from registro import start_command, registrar_usuario
-from admin import admin_commands
-from peliculas import peliculas_command
-from tarjetas import tarjeta_command
-from antispam import antispam_middleware
-from custom_commands import custom_commands
 
-# Configuración del logging (para ver errores y actividad del bot)
+import logging
+from telegram.ext import Application, CommandHandler
+from registro import start_command, registrar_usuario
+from db import init_db
+
+# Configuración de logs
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
 )
 
-# Aquí pega tu TOKEN real
-TOKEN = "6629555218"
-
-
+# 🚀 Función principal
 def main():
-    app = Application.builder().token(TOKEN).build()
+    # Inicializar la base de datos
+    init_db()
 
-    # --- Comandos básicos ---
-    app.add_handler(CommandHandler("start", start_command))   # Registro inicial
-    app.add_handler(CommandHandler("peliculas", peliculas_command))  # Menú películas
-    app.add_handler(CommandHandler("tarjeta", tarjeta_command))      # Generar tarjeta
-    app.add_handler(CommandHandler("admin", admin_commands))         # Panel admin
+    # Crear la aplicación del bot
+    application = Application.builder().token("8271445453:AAGkEThWtDCPRfEFOUfzLBxc3lIriZ9SvsM").build()
 
-    # --- Registro automático de usuarios ---
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, registrar_usuario))
+    # Handlers
+    application.add_handler(CommandHandler("start", start_command))
+    application.add_handler(CommandHandler("registrar", registrar_usuario))
 
-    # --- AntiSpam ---
-    app.add_handler(MessageHandler(filters.ALL, antispam_middleware))
-
-    # --- Custom commands con prefijos (!, %, ;, *, #) ---
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, custom_commands))
-
-    # Inicia el bot
-    print("🤖 Bot corriendo...")
-    app.run_polling()
-
+    # Ejecutar el bot
+    application.run_polling()
 
 if __name__ == "__main__":
     main()
