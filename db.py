@@ -4,10 +4,11 @@ DB_NAME = "usuarios.db"
 
 def init_db():
     conn = sqlite3.connect(DB_NAME)
-    cursor = conn.cursor()
-    cursor.execute("""
+    c = conn.cursor()
+    c.execute("""
         CREATE TABLE IF NOT EXISTS usuarios (
-            id INTEGER PRIMARY KEY,
+            user_id INTEGER PRIMARY KEY,
+            username TEXT,
             registrado INTEGER DEFAULT 0,
             baneado INTEGER DEFAULT 0
         )
@@ -15,25 +16,30 @@ def init_db():
     conn.commit()
     conn.close()
 
-def register_user(user_id):
+def registrar_usuario(user_id: int, username: str):
     conn = sqlite3.connect(DB_NAME)
-    cursor = conn.cursor()
-    cursor.execute("INSERT OR REPLACE INTO usuarios (id, registrado, baneado) VALUES (?, 1, 0)", (user_id,))
+    c = conn.cursor()
+    c.execute("INSERT OR IGNORE INTO usuarios (user_id, username) VALUES (?, ?)", (user_id, username))
     conn.commit()
     conn.close()
 
-def is_registered(user_id):
+def marcar_registrado(user_id: int):
     conn = sqlite3.connect(DB_NAME)
-    cursor = conn.cursor()
-    cursor.execute("SELECT registrado FROM usuarios WHERE id = ?", (user_id,))
-    result = cursor.fetchone()
+    c = conn.cursor()
+    c.execute("UPDATE usuarios SET registrado = 1 WHERE user_id = ?", (user_id,))
+    conn.commit()
     conn.close()
-    return result and result[0] == 1
 
-def is_banned(user_id):
+def ban_user(user_id: int, reason: str = "Baneado"):
     conn = sqlite3.connect(DB_NAME)
-    cursor = conn.cursor()
-    cursor.execute("SELECT baneado FROM usuarios WHERE id = ?", (user_id,))
-    result = cursor.fetchone()
+    c = conn.cursor()
+    c.execute("UPDATE usuarios SET baneado = 1 WHERE user_id = ?", (user_id,))
+    conn.commit()
     conn.close()
-    return result and result[0] == 1
+
+def unban_user(user_id: int):
+    conn = sqlite3.connect(DB_NAME)
+    c = conn.cursor()
+    c.execute("UPDATE usuarios SET baneado = 0 WHERE user_id = ?", (user_id,))
+    conn.commit()
+    conn.close()
