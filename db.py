@@ -1,44 +1,106 @@
-import os
-import psycopg2
+import sqlite3
 
-DATABASE_URL = os.getenv("DATABASE_URL")
+DB_NAME = "bot.db"
 
-conn = psycopg2.connect(DATABASE_URL, sslmode="require")
-cursor = conn.cursor()
+# -------------------------------
+# Inicializa la base de datos
+# -------------------------------
+def init_db():
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
 
-# Crear tablas
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS banned_users (
-    user_id BIGINT PRIMARY KEY
-);
-""")
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER UNIQUE,
+            username TEXT,
+            is_banned INTEGER DEFAULT 0,
+            is_admin INTEGER DEFAULT 0
+        )
+    ''')
 
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS registered_users (
-    user_id BIGINT PRIMARY KEY,
-    username TEXT
-);
-""")
-conn.commit()
-
-# 🚫 Ban
-def ban_user(user_id: int):
-    cursor.execute("INSERT INTO banned_users (user_id) VALUES (%s) ON CONFLICT DO NOTHING;", (user_id,))
     conn.commit()
+    conn.close()
 
-def unban_user(user_id: int):
-    cursor.execute("DELETE FROM banned_users WHERE user_id = %s;", (user_id,))
+# -------------------------------
+# Registrar usuario
+# -------------------------------
+def register_user(user_id, username):
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+
+    cursor.execute('''
+        INSERT OR IGNORE INTO users (user_id, username)
+        VALUES (?, ?)
+    ''', (user_id, username))
+
     conn.commit()
+    conn.close()
 
-def is_banned(user_id: int) -> bool:
-    cursor.execute("SELECT 1 FROM banned_users WHERE user_id = %s;", (user_id,))
-    return cursor.fetchone() is not None
+# -------------------------------
+# Verificar si un usuario está baneado
+# -------------------------------
+def is_banned(user_id):
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
 
-# ✅ Registro
-def register_user(user_id: int, username: str):
-    cursor.execute("INSERT INTO registered_users (user_id, username) VALUES (%s, %s) ON CONFLICT DO NOTHING;", (user_id, username))
+    cursor.execute('SELECT is_banned FROM users WHERE user_id = ?', (user_id,))
+    result = cursor.fetchone()
+
+    conn.close()
+
+    if result:
+        return result[0] == 1
+    return False
+
+# -------------------------------
+# Banear usuario
+# -------------------------------
+def ban_user(user_id):
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+
+    cursor.execute('UPDATE users SET is_banned = 1 WHERE user_id = ?', (user_id,))
+
     conn.commit()
+    conn.close()
 
-def is_registered(user_id: int) -> bool:
-    cursor.execute("SELECT 1 FROM registered_users WHERE user_id = %s;", (user_id,))
-    return cursor.fetchone() is not None
+# -------------------------------
+# Desbanear usuario
+# -------------------------------
+def unban_user(user_id):
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+
+    cursor.execute('UPDATE users SET is_banned = 0 WHERE user_id = ?', (user_id,))
+
+    conn.commit()
+    conn.close()
+
+# -------------------------------
+# Verificar si es admin
+# -------------------------------
+def is_admin(user_id):
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+
+    cursor.execute('SELECT is_admin FROM users WHERE user_id = ?', (user_id,))
+    result = cursor.fetchone()
+
+    conn.close()
+
+    if result:
+        return result[0] == 1
+    return False
+
+# -------------------------------
+# Hacer admin a un usuario
+# -------------------------------
+def make_admin(user_id):
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+
+    cursor.execute('UPDATE users SET is_admin = 1 WHERE user_id = ?', (user_id,))
+
+    conn.commit()
+    conn.close()
