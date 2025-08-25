@@ -3,15 +3,15 @@ from telegram.ext import Application, CommandHandler, PrefixHandler
 from registro import start_command, registrar_usuario
 from db import init_db
 
-# Prefijos permitidos
-PREFIJOS = ".*':;!?#/)(-%"
+# Prefijos permitidos (solo estos)
+PREFIJOS = ".!*?"
 
 def main():
     # Inicializar DB
     init_db()
 
     # Token desde variables de entorno
-    TOKEN = os.getenv("BOT_TOKEN")
+    TOKEN = os.getenv("8271445453:AAGkEThWtDCPRfEFOUfzLBxc3lIriZ9SvsM")
     if not TOKEN:
         raise ValueError("❌ BOT_TOKEN no configurado en Railway")
 
@@ -20,7 +20,7 @@ def main():
     # /start normal
     app.add_handler(CommandHandler("start", start_command))
 
-    # Otros comandos con prefijos
+    # Otros comandos con prefijo (. ! * ?)
     app.add_handler(PrefixHandler(PREFIJOS, "registrar", registrar_usuario))
 
     print("🤖 Bot iniciado correctamente...")
