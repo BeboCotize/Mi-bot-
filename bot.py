@@ -1,7 +1,7 @@
 import os
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters
 from db import init_db
-import commands
+import comandos
 
 TOKEN = os.getenv("BOT_TOKEN")
 
