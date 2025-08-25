@@ -2,7 +2,7 @@ from telegram import Update
 from telegram.ext import CommandHandler, CallbackContext
 from db import ban_user, unban_user
 
-ADMIN_ID = 123456789  # <-- tu ID de Telegram
+ADMIN_ID = 6629555218# <-- tu ID de Telegram
 
 def ban(update: Update, context: CallbackContext):
     if update.effective_user.id != ADMIN_ID:
