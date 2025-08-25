@@ -1,7 +1,8 @@
+import os
+import sqlite3
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
 from db import add_user, is_user_registered, init_db
-import sqlite3
 
 ADMIN_ID = 6629555218  # <-- tu ID de Telegram
 
@@ -54,8 +55,15 @@ async def users(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lista = "\n".join([f"• {u[0]}" for u in all_users])
     await update.message.reply_text(f"👥 Usuarios registrados:\n\n{lista}")
 
+# --------------------------
+# 🔑 Cargar token desde env
+# --------------------------
+TOKEN = os.getenv("BOT_TOKEN")
+if not TOKEN:
+    raise ValueError("❌ ERROR: No se encontró BOT_TOKEN en las variables de entorno de Railway")
+
 # Configuración del bot
-app = Application.builder().token("TU_TOKEN_AQUI").build()
+app = Application.builder().token(TOKEN).build()
 app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("registrar", registrar))
 app.add_handler(CommandHandler("panel", panel))
