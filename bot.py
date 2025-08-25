@@ -1,29 +1,26 @@
-from telegram.ext import ApplicationBuilder, CommandHandler
-from admin import ban, unban, add_admin, genkey
-from generador import gen_full
+import os
+from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters
+from db import init_db
+import commands
 
-TOKEN = "8271445453:AAGkEThWtDCPRfEFOUfzLBxc3lIriZ9SvsM"
+TOKEN = os.getenv("BOT_TOKEN")
 
-app = ApplicationBuilder().token(TOKEN).build()
+def main():
+    init_db()
+    app = Application.builder().token(TOKEN).build()
 
-# Comandos admin
-app.add_handler(CommandHandler("ban", ban))
-app.add_handler(CommandHandler("unban", unban))
-app.add_handler(CommandHandler("admin", add_admin))
-app.add_handler(CommandHandler("genkey", genkey))
+    # HANDLERS
+    app.add_handler(CommandHandler("start", commands.start))
+    app.add_handler(CallbackQueryHandler(commands.buttons))
+    app.add_handler(CommandHandler("redeem", commands.redeem))
 
-# Comando gen
-async def gen(update, context):
-    if not context.args:
-        return await update.message.reply_text("Uso: .gen <bin_pattern> [MM] [YYYY] [CVV]")
-    bin_pattern = context.args[0]
-    mm = context.args[1] if len(context.args) > 1 else None
-    yyyy = context.args[2] if len(context.args) > 2 else None
-    cvv = context.args[3] if len(context.args) > 3 else None
-    card = gen_full(bin_pattern, mm, yyyy, cvv)
-    await update.message.reply_text(f"💳 {card}")
+    # Prefijo .
+    app.add_handler(MessageHandler(filters.Regex(r"^\.ban"), commands.ban))
+    app.add_handler(MessageHandler(filters.Regex(r"^\.unban"), commands.unban))
+    app.add_handler(MessageHandler(filters.Regex(r"^\.genkey"), commands.genkey))
+    app.add_handler(MessageHandler(filters.Regex(r"^\.gen"), commands.gen))
 
-app.add_handler(CommandHandler("gen", gen))
+    app.run_polling()
 
 if __name__ == "__main__":
-    app.run_polling()
+    main()
