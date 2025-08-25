@@ -1,36 +1,98 @@
-from telegram.ext import Updater, CommandHandler
-from antispam import ban_handler, unban_handler
-from db import init_db, is_banned
+import logging
+from telegram import Update
+from telegram.ext import Application, CommandHandler, ContextTypes
 
-TOKEN = "8271445453:AAGkEThWtDCPRfEFOUfzLBxc3lIriZ9SvsM"
+from db import init_db, register_user, is_banned, ban_user, unban_user, is_admin, make_admin
 
-def start(update, context):
-    user_id = update.effective_user.id
-    if is_banned(user_id):
-        update.message.reply_text("🚫 No puedes usar este bot porque estás baneado.")
+# ----------------------------
+# Inicializar base de datos
+# ----------------------------
+init_db()
+
+# ----------------------------
+# Configuración de logging
+# ----------------------------
+logging.basicConfig(
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    level=logging.INFO
+)
+
+# ----------------------------
+# Comando /start
+# ----------------------------
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    register_user(user.id, user.username)
+
+    if is_banned(user.id):
+        await update.message.reply_text("🚫 Estás baneado y no puedes usar el bot.")
+    else:
+        await update.message.reply_text(f"👋 Hola {user.first_name}, bienvenido al bot.")
+
+# ----------------------------
+# Comando /ban (solo admins)
+# ----------------------------
+async def ban(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    if not is_admin(user.id):
+        await update.message.reply_text("❌ No tienes permisos para banear usuarios.")
         return
-    update.message.reply_text("✅ Bienvenido al bot. Usa /help para ver los comandos.")
 
-def help_command(update, context):
-    update.message.reply_text("Comandos disponibles:\n/start - Iniciar\n/help - Ayuda\n/ban - (solo admin)\n/unban - (solo admin)")
+    if not context.args:
+        await update.message.reply_text("Uso: /ban <user_id>")
+        return
 
+    target_id = int(context.args[0])
+    ban_user(target_id)
+    await update.message.reply_text(f"✅ Usuario {target_id} baneado.")
+
+# ----------------------------
+# Comando /unban (solo admins)
+# ----------------------------
+async def unban(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    if not is_admin(user.id):
+        await update.message.reply_text("❌ No tienes permisos para desbanear usuarios.")
+        return
+
+    if not context.args:
+        await update.message.reply_text("Uso: /unban <user_id>")
+        return
+
+    target_id = int(context.args[0])
+    unban_user(target_id)
+    await update.message.reply_text(f"✅ Usuario {target_id} desbaneado.")
+
+# ----------------------------
+# Comando /adminpanel
+# ----------------------------
+async def adminpanel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    if not is_admin(user.id):
+        await update.message.reply_text("❌ No tienes permisos para acceder al panel de admin.")
+        return
+
+    await update.message.reply_text(
+        "🔧 Panel de Admin\n"
+        "/ban <user_id> - Banear usuario\n"
+        "/unban <user_id> - Desbanear usuario\n"
+    )
+
+# ----------------------------
+# MAIN
+# ----------------------------
 def main():
-    # inicializar DB
-    init_db()
+    import os
+    TOKEN = os.getenv("BOT_TOKEN")
 
-    updater = Updater(TOKEN)
-    dp = updater.dispatcher
+    app = Application.builder().token(TOKEN).build()
 
-    # Handlers principales
-    dp.add_handler(CommandHandler("start", start))
-    dp.add_handler(CommandHandler("help", help_command))
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("ban", ban))
+    app.add_handler(CommandHandler("unban", unban))
+    app.add_handler(CommandHandler("adminpanel", adminpanel))
 
-    # Handlers de antispam
-    dp.add_handler(ban_handler)
-    dp.add_handler(unban_handler)
-
-    updater.start_polling()
-    updater.idle()
+    app.run_polling()
 
 if __name__ == "__main__":
     main()
