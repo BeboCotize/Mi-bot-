@@ -3,7 +3,7 @@ from telegram.ext import Application, CommandHandler, PrefixHandler
 from registro import start_command, registrar_usuario
 from db import init_db
 
-# Prefijos permitidos (solo estos)
+# Prefijos permitidos
 PREFIJOS = ".!*?"
 
 def main():
@@ -17,10 +17,13 @@ def main():
 
     app = Application.builder().token(TOKEN).build()
 
-    # /start normal
+    # /start normal (mensaje de bienvenida)
     app.add_handler(CommandHandler("start", start_command))
 
-    # Otros comandos con prefijo (. ! * ?)
+    # /registrar también válido
+    app.add_handler(CommandHandler("registrar", registrar_usuario))
+
+    # Prefijos (. ! * ?) para registrar
     app.add_handler(PrefixHandler(PREFIJOS, "registrar", registrar_usuario))
 
     print("🤖 Bot iniciado correctamente...")
