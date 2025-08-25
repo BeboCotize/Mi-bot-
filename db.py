@@ -1,87 +1,45 @@
+# db.py
 import sqlite3
 from datetime import datetime, timedelta
-import secrets
 
-DB_NAME = "db.sqlite"
+DB_NAME = "database.db"
 
 def init_db():
     conn = sqlite3.connect(DB_NAME)
-    cursor = conn.cursor()
-
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS users (
-        user_id INTEGER PRIMARY KEY,
-        username TEXT,
-        expire_at TIMESTAMP
-    )
+    c = conn.cursor()
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            user_id INTEGER PRIMARY KEY,
+            username TEXT,
+            registered_at TEXT,
+            expires_at TEXT,
+            banned INTEGER DEFAULT 0
+        )
     """)
-
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS keys (
-        key TEXT PRIMARY KEY,
-        expire_at TIMESTAMP,
-        used INTEGER DEFAULT 0
-    )
-    """)
-
     conn.commit()
     conn.close()
 
-# --------------------------
-# Funciones de keys
-# --------------------------
-
-def create_key(days: int) -> str:
-    key = secrets.token_hex(8)  # genera key aleatoria
-    expire_at = datetime.now() + timedelta(days=days)
-
+def register_user(user_id, username, days=1):
     conn = sqlite3.connect(DB_NAME)
-    cursor = conn.cursor()
-    cursor.execute("INSERT INTO keys (key, expire_at) VALUES (?, ?)", (key, expire_at))
+    c = conn.cursor()
+    expires_at = (datetime.now() + timedelta(days=days)).strftime("%Y-%m-%d %H:%M:%S")
+    c.execute("INSERT OR REPLACE INTO users (user_id, username, registered_at, expires_at) VALUES (?, ?, ?, ?)", 
+              (user_id, username, datetime.now().strftime("%Y-%m-%d %H:%M:%S"), expires_at))
     conn.commit()
     conn.close()
 
-    return key
-
-def redeem_key(user_id: int, username: str, key: str) -> bool:
+def is_registered(user_id):
     conn = sqlite3.connect(DB_NAME)
-    cursor = conn.cursor()
-
-    cursor.execute("SELECT key, expire_at, used FROM keys WHERE key = ?", (key,))
-    row = cursor.fetchone()
-    if not row:
-        conn.close()
-        return False  # key no existe
-
-    if row[2] == 1:  # ya usada
-        conn.close()
-        return False
-
-    expire_at = row[1]
-
-    # actualizar usuario con la expiración de la key
-    cursor.execute("""
-        INSERT INTO users (user_id, username, expire_at)
-        VALUES (?, ?, ?)
-        ON CONFLICT(user_id) DO UPDATE SET expire_at=excluded.expire_at
-    """, (user_id, username, expire_at))
-
-    # marcar la key como usada
-    cursor.execute("UPDATE keys SET used=1 WHERE key=?", (key,))
-    conn.commit()
+    c = conn.cursor()
+    c.execute("SELECT * FROM users WHERE user_id = ?", (user_id,))
+    user = c.fetchone()
     conn.close()
+    return user is not None
 
-    return True
-
-def has_valid_key(user_id: int) -> bool:
+def is_banned(user_id):
     conn = sqlite3.connect(DB_NAME)
-    cursor = conn.cursor()
-    cursor.execute("SELECT expire_at FROM users WHERE user_id=?", (user_id,))
-    row = cursor.fetchone()
+    c = conn.cursor()
+    c.execute("SELECT banned FROM users WHERE user_id = ?", (user_id,))
+    result = c.fetchone()
     conn.close()
-
-    if not row:
-        return False
-
-    expire_at = datetime.fromisoformat(row[0])
-    return expire_at > datetime.now()
+    return result is not None and result[0] == 1
