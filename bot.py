@@ -249,7 +249,7 @@ async def message_handler(update: Update, context: CallbackContext):
 # ==========================
 
 def main():
-    app = Application.builder().token("AQUI_TU_TOKEN").build()
+    app = Application.builder().token("8271445453:AAGkEThWtDCPRfEFOUfzLBxc3lIriZ9SvsM").build()
 
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message_handler))
     app.add_handler(MessageHandler(filters.COMMAND, message_handler))  # fallback por si alguien usa "/"
