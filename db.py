@@ -1,45 +1,39 @@
-# db.py
 import sqlite3
-from datetime import datetime, timedelta
 
-DB_NAME = "database.db"
+DB_NAME = "usuarios.db"
 
 def init_db():
     conn = sqlite3.connect(DB_NAME)
-    c = conn.cursor()
-    c.execute("""
-        CREATE TABLE IF NOT EXISTS users (
-            user_id INTEGER PRIMARY KEY,
-            username TEXT,
-            registered_at TEXT,
-            expires_at TEXT,
-            banned INTEGER DEFAULT 0
+    cursor = conn.cursor()
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS usuarios (
+            id INTEGER PRIMARY KEY,
+            registrado INTEGER DEFAULT 0,
+            baneado INTEGER DEFAULT 0
         )
     """)
     conn.commit()
     conn.close()
 
-def register_user(user_id, username, days=1):
+def register_user(user_id):
     conn = sqlite3.connect(DB_NAME)
-    c = conn.cursor()
-    expires_at = (datetime.now() + timedelta(days=days)).strftime("%Y-%m-%d %H:%M:%S")
-    c.execute("INSERT OR REPLACE INTO users (user_id, username, registered_at, expires_at) VALUES (?, ?, ?, ?)", 
-              (user_id, username, datetime.now().strftime("%Y-%m-%d %H:%M:%S"), expires_at))
+    cursor = conn.cursor()
+    cursor.execute("INSERT OR REPLACE INTO usuarios (id, registrado, baneado) VALUES (?, 1, 0)", (user_id,))
     conn.commit()
     conn.close()
 
 def is_registered(user_id):
     conn = sqlite3.connect(DB_NAME)
-    c = conn.cursor()
-    c.execute("SELECT * FROM users WHERE user_id = ?", (user_id,))
-    user = c.fetchone()
+    cursor = conn.cursor()
+    cursor.execute("SELECT registrado FROM usuarios WHERE id = ?", (user_id,))
+    result = cursor.fetchone()
     conn.close()
-    return user is not None
+    return result and result[0] == 1
 
 def is_banned(user_id):
     conn = sqlite3.connect(DB_NAME)
-    c = conn.cursor()
-    c.execute("SELECT banned FROM users WHERE user_id = ?", (user_id,))
-    result = c.fetchone()
+    cursor = conn.cursor()
+    cursor.execute("SELECT baneado FROM usuarios WHERE id = ?", (user_id,))
+    result = cursor.fetchone()
     conn.close()
-    return result is not None and result[0] == 1
+    return result and result[0] == 1
