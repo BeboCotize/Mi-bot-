@@ -1,55 +1,36 @@
-# bot.py
-import os
-from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
-from telegram.ext import (
-    Application,
-    CommandHandler,
-    MessageHandler,
-    CallbackQueryHandler,
-    ContextTypes,
-    filters,
-)
+from telegram.ext import Updater, CommandHandler
+from antispam import ban_handler, unban_handler
+from db import init_db, is_banned
 
-from antispam import antispam_handler
-from db import init_db
+TOKEN = "TU_TOKEN_AQUI"
 
-TOKEN = os.getenv("BOT_TOKEN")
+def start(update, context):
+    user_id = update.effective_user.id
+    if is_banned(user_id):
+        update.message.reply_text("🚫 No puedes usar este bot porque estás baneado.")
+        return
+    update.message.reply_text("✅ Bienvenido al bot. Usa /help para ver los comandos.")
 
-# /start
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    keyboard = [
-        [InlineKeyboardButton("🎬 Películas", callback_data="peliculas")],
-        [InlineKeyboardButton("⬅️ Volver atrás", callback_data="volver")]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text("Bienvenido al bot 👋", reply_markup=reply_markup)
-
-# Manejo de botones
-async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-
-    if query.data == "peliculas":
-        await query.edit_message_text("Aquí tienes la lista de películas 🎥")
-    elif query.data == "volver":
-        await query.edit_message_text("Has vuelto al menú principal ⬅️")
+def help_command(update, context):
+    update.message.reply_text("Comandos disponibles:\n/start - Iniciar\n/help - Ayuda\n/ban - (solo admin)\n/unban - (solo admin)")
 
 def main():
+    # inicializar DB
     init_db()
 
-    app = Application.builder().token(TOKEN).build()
+    updater = Updater(TOKEN)
+    dp = updater.dispatcher
 
-    # Comandos
-    app.add_handler(CommandHandler("start", start))
+    # Handlers principales
+    dp.add_handler(CommandHandler("start", start))
+    dp.add_handler(CommandHandler("help", help_command))
 
-    # Botones
-    app.add_handler(CallbackQueryHandler(button_handler))
+    # Handlers de antispam
+    dp.add_handler(ban_handler)
+    dp.add_handler(unban_handler)
 
-    # Antispam
-    app.add_handler(MessageHandler(filters.ALL, antispam_handler))
-
-    print("🤖 Bot iniciado...")
-    app.run_polling()
+    updater.start_polling()
+    updater.idle()
 
 if __name__ == "__main__":
     main()
