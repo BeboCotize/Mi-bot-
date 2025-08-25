@@ -1,25 +1,40 @@
+# bot.py
 import os
-from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters
-from db import init_db
+from telegram.ext import Application, CommandHandler, MessageHandler, filters
 import comandos
 
-TOKEN = os.getenv("BOT_TOKEN")
+TOKEN = os.getenv("BOT_TOKEN")  # tu token de Telegram Bot en Railway
 
+# -------------------- Prefijos --------------------
+PREFIXES = [".", "!", "*", "?"]
+
+def with_prefix(command):
+    """Agrega los prefijos válidos al comando"""
+    return [p + command for p in PREFIXES]
+
+# -------------------- Main --------------------
 def main():
-    init_db()
     app = Application.builder().token(TOKEN).build()
 
-    # HANDLERS
-    app.add_handler(CommandHandler("start", commands.start))
-    app.add_handler(CallbackQueryHandler(commands.buttons))
-    app.add_handler(CommandHandler("redeem", commands.redeem))
+    # BAN / UNBAN / ADMIN
+    for cmd in with_prefix("ban"):
+        app.add_handler(CommandHandler(cmd, comandos.ban))
+    for cmd in with_prefix("unban"):
+        app.add_handler(CommandHandler(cmd, comandos.unban))
+    for cmd in with_prefix("admin"):
+        app.add_handler(CommandHandler(cmd, comandos.make_admin))
 
-    # Prefijo .
-    app.add_handler(MessageHandler(filters.Regex(r"^\.ban"), commands.ban))
-    app.add_handler(MessageHandler(filters.Regex(r"^\.unban"), commands.unban))
-    app.add_handler(MessageHandler(filters.Regex(r"^\.genkey"), commands.genkey))
-    app.add_handler(MessageHandler(filters.Regex(r"^\.gen"), commands.gen))
+    # KEYS
+    for cmd in with_prefix("genkey"):
+        app.add_handler(CommandHandler(cmd, comandos.genkey))
+    for cmd in with_prefix("redeem"):
+        app.add_handler(CommandHandler(cmd, comandos.redeem))
 
+    # GENERADOR
+    for cmd in with_prefix("gen"):
+        app.add_handler(CommandHandler(cmd, comandos.gen))
+
+    print("🤖 Bot corriendo...")
     app.run_polling()
 
 if __name__ == "__main__":
