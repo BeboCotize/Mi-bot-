@@ -1,281 +1,247 @@
 import json
+import os
 import random
 import string
-import os
 from datetime import datetime, timedelta
-
-from telegram import (
-    Update,
-    InlineKeyboardButton,
-    InlineKeyboardMarkup
-)
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import (
-    ApplicationBuilder,
+    Application,
     CommandHandler,
     MessageHandler,
+    CallbackQueryHandler,
     ContextTypes,
     filters,
 )
 
-# ---------------------------
-# Archivos de datos
-# ---------------------------
+# ================== CONFIG ==================
+TOKEN = "8271445453:AAGkEThWtDCPRfEFOUfzLBxc3lIriZ9SvsM"   # <-- pon tu token aquí
+ADMIN_IDS = [6629555218]      # <-- IDs de admins
+
+# Archivos de almacenamiento
 USERS_FILE = "users.json"
 KEYS_FILE = "keys.json"
 
+# ================== UTILIDADES ==================
+
 def load_json(filename, default):
     if not os.path.exists(filename):
-        with open(filename, "w") as f:
-            json.dump(default, f)
+        return default
     with open(filename, "r") as f:
-        return json.load(f)
+        try:
+            return json.load(f)
+        except:
+            return default
 
 def save_json(filename, data):
     with open(filename, "w") as f:
         json.dump(data, f, indent=4)
 
-users = load_json(USERS_FILE, {})
-keys = load_json(KEYS_FILE, {})
+def get_users():
+    return load_json(USERS_FILE, {})
 
-# ---------------------------
-# Helpers
-# ---------------------------
-ADMINS = [6629555218]  # IDs de admins aquí
+def save_users(data):
+    save_json(USERS_FILE, data)
 
-def is_admin(user_id):
-    return user_id in ADMINS
+def get_keys():
+    return load_json(KEYS_FILE, {})
 
-def is_banned(user_id):
+def save_keys(data):
+    save_json(KEYS_FILE, data)
+
+def is_admin(user_id: int) -> bool:
+    return user_id in ADMIN_IDS
+
+def is_banned(user_id: int) -> bool:
+    users = get_users()
     return users.get(str(user_id), {}).get("banned", False)
 
-def is_active(user_id):
-    user = users.get(str(user_id))
-    if not user:
-        return False
-    if user.get("banned", False):
-        return False
-    exp = user.get("exp")
-    if not exp:
-        return False
-    return datetime.now() < datetime.fromisoformat(exp)
+def is_active(user_id: int) -> bool:
+    users = get_users()
+    info = users.get(str(user_id), {})
+    return info.get("active", False) and not info.get("banned", False)
 
-def activate_user(user_id, days):
-    exp_date = datetime.now() + timedelta(days=days)
-    users[str(user_id)] = {"exp": exp_date.isoformat(), "banned": False}
-    save_json(USERS_FILE, users)
+# ================== HANDLERS ==================
 
-def generate_key(days=1):
-    key = ''.join(random.choices(string.ascii_uppercase + string.digits, k=12))
-    exp = datetime.now() + timedelta(days=days)
-    keys[key] = exp.isoformat()
-    save_json(KEYS_FILE, keys)
-    return key
-
-def use_key(key, user_id):
-    if key not in keys:
-        return False, "❌ Key inválida."
-    exp_date = datetime.fromisoformat(keys[key])
-    if datetime.now() > exp_date:
-        return False, "❌ Key expirada."
-    activate_user(user_id, (exp_date - datetime.now()).days)
-    del keys[key]
-    save_json(KEYS_FILE, keys)
-    return True, "✅ Key activada con éxito."
-
-def luhn_checksum(card_number):
-    def digits_of(n):
-        return [int(d) for d in str(n)]
-    digits = digits_of(card_number)
-    odd = digits[-1::-2]
-    even = digits[-2::-2]
-    checksum = sum(odd)
-    for d in even:
-        checksum += sum(digits_of(d*2))
-    return checksum % 10
-
-def generate_luhn(base_number):
-    check_digit = (10 - luhn_checksum(base_number + "0")) % 10
-    return base_number + str(check_digit)
-
-# ---------------------------
-# Middlewares
-# ---------------------------
-async def check_access(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if is_admin(user_id):
-        return True
-    if is_banned(user_id):
-        await update.message.reply_text("⛔ Estás baneado.")
-        return False
-    if not is_active(user_id):
-        await update.message.reply_text("❌ Debes activar el bot con una key. Usa `.claim <key>`")
-        return False
-    return True
-
-# ---------------------------
-# Handlers
-# ---------------------------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if not is_active(user_id):
+        await update.message.reply_text("❌ Debes activar el bot con una key.\nUsa: `.claim <key>`")
+        return
+    await update.message.reply_text("✅ Bienvenido! Usa `.gen` para generar tarjetas.")
+
+# --- CLAIM KEY ---
+async def claim(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = str(update.effective_user.id)
+    if len(context.args) != 1:
+        await update.message.reply_text("Uso: `.claim <key>`")
+        return
+
+    key = context.args[0]
+    keys = get_keys()
+    if key not in keys:
+        await update.message.reply_text("❌ Key inválida.")
+        return
+
+    data = keys[key]
+    if data["used"]:
+        await update.message.reply_text("❌ Esa key ya fue usada.")
+        return
+
+    expiry = datetime.now() + timedelta(days=int(data["days"]))
+    users = get_users()
+    users[user_id] = {"active": True, "banned": False, "expiry": expiry.strftime("%Y-%m-%d %H:%M:%S")}
+    save_users(users)
+
+    keys[key]["used"] = True
+    save_keys(keys)
+
+    await update.message.reply_text(f"✅ Key activada! Expira el: {expiry.strftime('%Y-%m-%d %H:%M:%S')}")
+
+# --- GENERAR KEYS (admin) ---
+async def genkey(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if not is_admin(user_id):
+        return await update.message.reply_text("❌ No tienes permisos.")
+
+    if len(context.args) != 1:
+        return await update.message.reply_text("Uso: `.genkey <días>`")
+
+    try:
+        days = int(context.args[0])
+    except:
+        return await update.message.reply_text("❌ Debes poner un número de días.")
+
+    key = "".join(random.choices(string.ascii_uppercase + string.digits, k=12))
+    keys = get_keys()
+    keys[key] = {"days": days, "used": False}
+    save_keys(keys)
+
+    await update.message.reply_text(f"🔑 Key generada:\n`{key}` ({days} días)", parse_mode="Markdown")
+
+# --- BAN ---
+async def ban(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_admin(update.effective_user.id):
+        return await update.message.reply_text("❌ No tienes permisos.")
+
+    if len(context.args) != 1:
+        return await update.message.reply_text("Uso: `.ban <user_id>`")
+
+    uid = context.args[0]
+    users = get_users()
+    if uid not in users:
+        users[uid] = {"active": False, "banned": True}
+    else:
+        users[uid]["banned"] = True
+    save_users(users)
+
+    await update.message.reply_text(f"🚫 Usuario {uid} baneado.")
+
+# --- UNBAN ---
+async def unban(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_admin(update.effective_user.id):
+        return await update.message.reply_text("❌ No tienes permisos.")
+
+    if len(context.args) != 1:
+        return await update.message.reply_text("Uso: `.unban <user_id>`")
+
+    uid = context.args[0]
+    users = get_users()
+    if uid not in users:
+        return await update.message.reply_text("Ese usuario no existe en la base de datos.")
+
+    users[uid]["banned"] = False
+    save_users(users)
+
+    await update.message.reply_text(f"✅ Usuario {uid} desbaneado.")
+
+# --- ADMIN LIST ---
+async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_admin(update.effective_user.id):
+        return await update.message.reply_text("❌ No tienes permisos.")
+
+    users = get_users()
+    msg = "📋 Lista de usuarios:\n\n"
+    for uid, info in users.items():
+        estado = "🚫 Baneado" if info.get("banned") else "✅ Activo" if info.get("active") else "❌ Inactivo"
+        msg += f"👤 {uid} → {estado}\n"
+    await update.message.reply_text(msg)
+
+# --- GEN (tarjetas random con Luhn simple) ---
+def luhn_reservado(cc: str) -> bool:
+    total = 0
+    reverse = cc[::-1]
+    for i, num in enumerate(reverse):
+        n = int(num)
+        if i % 2 == 1:
+            n *= 2
+            if n > 9:
+                n -= 9
+        total += n
+    return total % 10 == 0
+
+def generar_tarjeta():
+    while True:
+        cc = "".join(random.choice(string.digits) for _ in range(16))
+        if luhn_reservado(cc):
+            mes = str(random.randint(1, 12)).zfill(2)
+            ano = str(random.randint(2025, 2030))
+            cvv = str(random.randint(100, 999))
+            return f"{cc}|{mes}|{ano}|{cvv}"
+
+async def gen(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if not is_active(user_id):
+        return await update.message.reply_text("❌ Debes activar el bot con una key.\nUsa `.claim <key>`")
+    card = generar_tarjeta()
+    await update.message.reply_text(f"💳 {card}")
+
+# --- BOTONES ---
+async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_active(update.effective_user.id):
+        return await update.message.reply_text("❌ Debes activar el bot con una key.\nUsa `.claim <key>`")
+
     keyboard = [
-        [InlineKeyboardButton("🔧 Tools", callback_data="tools")],
+        [InlineKeyboardButton("🔧 Herramientas", callback_data="tools")],
         [InlineKeyboardButton("🌐 Gateway", callback_data="gateway")]
     ]
-    await update.message.reply_text("👋 Bienvenido al bot!", reply_markup=InlineKeyboardMarkup(keyboard))
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await update.message.reply_text("📌 Menú principal:", reply_markup=reply_markup)
 
 async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
 
     if query.data == "tools":
-        await query.edit_message_text("🔧 Herramientas")
+        await query.edit_message_text("🔧 Aquí están las herramientas disponibles.")
     elif query.data == "gateway":
         keyboard = [
-            [InlineKeyboardButton("hola xd", callback_data="h1")],
-            [InlineKeyboardButton("hola xd", callback_data="h2")],
-            [InlineKeyboardButton("hola xd", callback_data="h3")],
-            [InlineKeyboardButton("hola xd", callback_data="h4")],
+            [InlineKeyboardButton("Hola xd 1", callback_data="xd1")],
+            [InlineKeyboardButton("Hola xd 2", callback_data="xd2")],
+            [InlineKeyboardButton("Hola xd 3", callback_data="xd3")],
+            [InlineKeyboardButton("Hola xd 4", callback_data="xd4")]
         ]
-        await query.edit_message_text("🌐 Gateway", reply_markup=InlineKeyboardMarkup(keyboard))
+        await query.edit_message_text("🌐 Gateway:", reply_markup=InlineKeyboardMarkup(keyboard))
     else:
-        await query.edit_message_text("hola xd")
+        await query.edit_message_text(f"Hiciste click en: {query.data}")
 
-# ---- CLAIM / REDEEM ----
-async def claim(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if not context.args:
-        await update.message.reply_text("❌ Usa `.claim <key>`")
-        return
-    key = context.args[0]
-    ok, msg = use_key(key, user_id)
-    await update.message.reply_text(msg)
-
-async def redeem(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Alias antiguo
-    return await claim(update, context)
-
-# ---- GENKEY ----
-async def genkey(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_admin(update.effective_user.id):
-        await update.message.reply_text("⛔ Solo admins.")
-        return
-    days = 1
-    if context.args:
-        try:
-            days = int(context.args[0])
-        except:
-            pass
-    key = generate_key(days)
-    await update.message.reply_text(f"🔑 Key generada: `{key}`", parse_mode="Markdown")
-
-# ---- BAN / UNBAN / ADMIN ----
-async def ban(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_admin(update.effective_user.id):
-        await update.message.reply_text("⛔ Solo admins.")
-        return
-    if not context.args:
-        await update.message.reply_text("Uso: .ban <id>")
-        return
-    target = context.args[0]
-    if target in users:
-        users[target]["banned"] = True
-        save_json(USERS_FILE, users)
-        await update.message.reply_text(f"🚫 Usuario {target} baneado.")
-    else:
-        await update.message.reply_text("Usuario no encontrado.")
-
-async def unban(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_admin(update.effective_user.id):
-        await update.message.reply_text("⛔ Solo admins.")
-        return
-    if not context.args:
-        await update.message.reply_text("Uso: .unban <id>")
-        return
-    target = context.args[0]
-    if target in users:
-        users[target]["banned"] = False
-        save_json(USERS_FILE, users)
-        await update.message.reply_text(f"✅ Usuario {target} desbaneado.")
-    else:
-        await update.message.reply_text("Usuario no encontrado.")
-
-async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_admin(update.effective_user.id):
-        await update.message.reply_text("⛔ Solo admins.")
-        return
-    text = "👑 Lista de usuarios:\n"
-    for uid, data in users.items():
-        status = "BANEADO" if data.get("banned") else "Activo"
-        exp = data.get("exp", "N/A")
-        text += f"- {uid} → {status} (expira {exp})\n"
-    await update.message.reply_text(text)
-
-# ---- GEN ----
-async def gen(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not await check_access(update, context):
-        return
-
-    if not context.args:
-        await update.message.reply_text("Uso: `.gen <bin|base_number|pattern>`")
-        return
-
-    inp = context.args[0]
-    results = []
-
-    if "x" in inp.lower():
-        for _ in range(10):
-            card = ""
-            for ch in inp:
-                if ch.lower() == "x":
-                    card += str(random.randint(0, 9))
-                else:
-                    card += ch
-            card = generate_luhn(card[:-1])
-            mm = str(random.randint(1, 12)).zfill(2)
-            yy = str(random.randint(2025, 2030))
-            cvv = str(random.randint(100, 999))
-            results.append(f"{card}|{mm}|{yy}|{cvv}")
-    else:
-        for _ in range(10):
-            base = inp
-            while len(base) < 15:
-                base += str(random.randint(0, 9))
-            card = generate_luhn(base)
-            mm = str(random.randint(1, 12)).zfill(2)
-            yy = str(random.randint(2025, 2030))
-            cvv = str(random.randint(100, 999))
-            results.append(f"{card}|{mm}|{yy}|{cvv}")
-
-    await update.message.reply_text("\n".join(results))
-
-# ---------------------------
-# Main
-# ---------------------------
+# ================== MAIN ==================
 def main():
-    app = ApplicationBuilder().token("TU_TOKEN_AQUI").build()
+    app = Application.builder().token(TOKEN).build()
 
+    # Comandos
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(MessageHandler(filters.COMMAND & filters.Regex(r"^\.claim"), claim))
-    app.add_handler(MessageHandler(filters.COMMAND & filters.Regex(r"^\.redeem"), redeem))
-    app.add_handler(MessageHandler(filters.COMMAND & filters.Regex(r"^\.genkey"), genkey))
-    app.add_handler(MessageHandler(filters.COMMAND & filters.Regex(r"^\.ban"), ban))
-    app.add_handler(MessageHandler(filters.COMMAND & filters.Regex(r"^\.unban"), unban))
-    app.add_handler(MessageHandler(filters.COMMAND & filters.Regex(r"^\.admin"), admin))
-    app.add_handler(MessageHandler(filters.COMMAND & filters.Regex(r"^\.gen"), gen))
+    app.add_handler(CommandHandler("claim", claim))
+    app.add_handler(CommandHandler("genkey", genkey))
+    app.add_handler(CommandHandler("ban", ban))
+    app.add_handler(CommandHandler("unban", unban))
+    app.add_handler(CommandHandler("admin", admin))
+    app.add_handler(CommandHandler("gen", gen))
+    app.add_handler(CommandHandler("menu", menu))
 
-    app.add_handler(MessageHandler(filters.Regex(r"^/claim"), claim))
-    app.add_handler(MessageHandler(filters.Regex(r"^/redeem"), redeem))
-    app.add_handler(MessageHandler(filters.Regex(r"^/genkey"), genkey))
-    app.add_handler(MessageHandler(filters.Regex(r"^/ban"), ban))
-    app.add_handler(MessageHandler(filters.Regex(r"^/unban"), unban))
-    app.add_handler(MessageHandler(filters.Regex(r"^/admin"), admin))
-    app.add_handler(MessageHandler(filters.Regex(r"^/gen"), gen))
+    # Handler de botones
+    app.add_handler(CallbackQueryHandler(buttons))
 
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, check_access))
-    app.add_handler(MessageHandler(filters.ALL, check_access))
-    app.add_handler(MessageHandler(filters.StatusUpdate.ALL, check_access))
-    app.add_handler(MessageHandler(filters.UpdateType.CALLBACK_QUERY, buttons))
-
-    print("🤖 Bot iniciado...")
+    print("🤖 Bot corriendo...")
     app.run_polling()
 
 if __name__ == "__main__":
