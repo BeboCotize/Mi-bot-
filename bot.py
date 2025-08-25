@@ -4,7 +4,7 @@ from registro import start_command, registrar_usuario
 from db import init_db
 
 # Prefijos permitidos
-PREFIJOS = ".*':;!?#/)(-%"
+PREFIJOS = "..*':;!?#/)(-%"
 
 def main():
     # Inicializar DB
