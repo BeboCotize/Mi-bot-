@@ -2,81 +2,60 @@ import logging
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
 
-from db import init_db, register_user, is_banned, ban_user, unban_user, is_admin, make_admin
+from db import init_db, create_key, redeem_key, has_valid_key
 
-# ----------------------------
-# Inicializar base de datos
-# ----------------------------
 init_db()
 
+logging.basicConfig(level=logging.INFO)
+
 # ----------------------------
-# Configuración de logging
+# Solo para admin
 # ----------------------------
-logging.basicConfig(
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    level=logging.INFO
-)
+ADMIN_ID = 6629555218  # <-- pon tu user_id de Telegram aquí
+
+async def genkey(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        await update.message.reply_text("❌ No tienes permiso para generar keys.")
+        return
+
+    if not context.args:
+        await update.message.reply_text("Uso: /genkey <días>")
+        return
+
+    try:
+        days = int(context.args[0])
+    except ValueError:
+        await update.message.reply_text("El parámetro debe ser un número.")
+        return
+
+    key = create_key(days)
+    await update.message.reply_text(f"🔑 Key generada: `{key}`\nValidez: {days} días", parse_mode="Markdown")
+
+# ----------------------------
+# Usuario canjea la key
+# ----------------------------
+async def redeem(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.args:
+        await update.message.reply_text("Uso: /redeem <key>")
+        return
+
+    key = context.args[0]
+    success = redeem_key(update.effective_user.id, update.effective_user.username, key)
+
+    if success:
+        await update.message.reply_text("✅ Key canjeada con éxito, ya puedes usar el bot.")
+    else:
+        await update.message.reply_text("❌ Key inválida o ya usada.")
 
 # ----------------------------
 # Comando /start
 # ----------------------------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
-    register_user(user.id, user.username)
-
-    if is_banned(user.id):
-        await update.message.reply_text("🚫 Estás baneado y no puedes usar el bot.")
+    if has_valid_key(user.id):
+        await update.message.reply_text("🎉 Bienvenido, tienes acceso activo al bot.")
     else:
-        await update.message.reply_text(f"👋 Hola {user.first_name}, bienvenido al bot.")
-
-# ----------------------------
-# Comando /ban (solo admins)
-# ----------------------------
-async def ban(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
-    if not is_admin(user.id):
-        await update.message.reply_text("❌ No tienes permisos para banear usuarios.")
-        return
-
-    if not context.args:
-        await update.message.reply_text("Uso: /ban <user_id>")
-        return
-
-    target_id = int(context.args[0])
-    ban_user(target_id)
-    await update.message.reply_text(f"✅ Usuario {target_id} baneado.")
-
-# ----------------------------
-# Comando /unban (solo admins)
-# ----------------------------
-async def unban(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
-    if not is_admin(user.id):
-        await update.message.reply_text("❌ No tienes permisos para desbanear usuarios.")
-        return
-
-    if not context.args:
-        await update.message.reply_text("Uso: /unban <user_id>")
-        return
-
-    target_id = int(context.args[0])
-    unban_user(target_id)
-    await update.message.reply_text(f"✅ Usuario {target_id} desbaneado.")
-
-# ----------------------------
-# Comando /adminpanel
-# ----------------------------
-async def adminpanel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
-    if not is_admin(user.id):
-        await update.message.reply_text("❌ No tienes permisos para acceder al panel de admin.")
-        return
-
-    await update.message.reply_text(
-        "🔧 Panel de Admin\n"
-        "/ban <user_id> - Banear usuario\n"
-        "/unban <user_id> - Desbanear usuario\n"
-    )
+        await update.message.reply_text("⚠️ No tienes una key válida. Solicita una al admin y usa /redeem <key>.")
 
 # ----------------------------
 # MAIN
@@ -84,13 +63,11 @@ async def adminpanel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     import os
     TOKEN = os.getenv("BOT_TOKEN")
-
     app = Application.builder().token(TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("ban", ban))
-    app.add_handler(CommandHandler("unban", unban))
-    app.add_handler(CommandHandler("adminpanel", adminpanel))
+    app.add_handler(CommandHandler("genkey", genkey))
+    app.add_handler(CommandHandler("redeem", redeem))
 
     app.run_polling()
 
