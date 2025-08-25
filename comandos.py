@@ -14,4 +14,4 @@ def custom_commands(application):
 
     prefixed_command(".", "gen", generar_cc)
     prefixed_command(".", "bin", bin_info)
-    prefixed_command(".", "registrar", registrar_usuario)
+    prefixed_command(".", "registrar", registrar_usuario) 
