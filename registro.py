@@ -1,30 +1,16 @@
 from telegram import Update
 from telegram.ext import ContextTypes
-from db import register_user, is_registered, is_banned
+from db import registrar_usuario, marcar_registrado
 
-# /start (se envía al entrar al bot)
-async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    registrar_usuario(user.id, user.username or "Desconocido")
     await update.message.reply_text(
-        "👋 Bienvenido al bot.\n\n"
-        "👉 Para registrarte usa:\n"
-        " • `.registrar`\n"
-        " • `!registrar`\n"
-        " • `*registrar`\n"
-        " • `?registrar`\n"
-        " • o también `/registrar`"
+        f"👋 Bienvenido {user.first_name}!\n\n"
+        "Para comenzar, usa `.registrar` o `/registrar`."
     )
 
-# .registrar o /registrar
-async def registrar_usuario(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    
-    if is_banned(user_id):
-        await update.message.reply_text("🚫 Estás baneado del bot.")
-        return
-    
-    if is_registered(user_id):
-        await update.message.reply_text("✅ Ya estás registrado.")
-        return
-    
-    register_user(user_id)
-    await update.message.reply_text("🎉 Registro completado. Ya puedes usar el bot.")
+async def registrar(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    marcar_registrado(user.id)
+    await update.message.reply_text("✅ Registro completado. ¡Ya puedes usar los comandos!")
