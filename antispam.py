@@ -1,25 +1,30 @@
-# antispam.py
 from telegram import Update
-from telegram.ext import CallbackContext
-from db import ban_user, is_banned
+from telegram.ext import CommandHandler, CallbackContext
+from db import ban_user, unban_user
 
-# Diccionario para contar mensajes por usuario
-user_messages = {}
+ADMIN_ID = 123456789  # <-- tu ID de Telegram
 
-def antispam_handler(update: Update, context: CallbackContext):
-    user_id = update.effective_user.id
-
-    # Si el usuario ya está baneado, no responder
-    if is_banned(user_id):
+def ban(update: Update, context: CallbackContext):
+    if update.effective_user.id != ADMIN_ID:
+        update.message.reply_text("❌ No tienes permisos.")
         return
+    if not context.args:
+        update.message.reply_text("❌ Debes poner un ID de usuario.")
+        return
+    user_id = int(context.args[0])
+    ban_user(user_id)
+    update.message.reply_text(f"🚫 Usuario {user_id} baneado.")
 
-    # Contar mensajes
-    if user_id not in user_messages:
-        user_messages[user_id] = 1
-    else:
-        user_messages[user_id] += 1
+def unban(update: Update, context: CallbackContext):
+    if update.effective_user.id != ADMIN_ID:
+        update.message.reply_text("❌ No tienes permisos.")
+        return
+    if not context.args:
+        update.message.reply_text("❌ Debes poner un ID de usuario.")
+        return
+    user_id = int(context.args[0])
+    unban_user(user_id)
+    update.message.reply_text(f"✅ Usuario {user_id} desbaneado.")
 
-    # Si supera el límite, se banea
-    if user_messages[user_id] > 5:  # Puedes ajustar el número
-        ban_user(user_id)
-        update.message.reply_text("🚫 Has sido baneado por spam.")
+ban_handler = CommandHandler("ban", ban)
+unban_handler = CommandHandler("unban", unban)
