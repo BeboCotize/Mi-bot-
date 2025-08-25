@@ -1,106 +1,87 @@
 import sqlite3
+from datetime import datetime, timedelta
+import secrets
 
-DB_NAME = "bot.db"
+DB_NAME = "db.sqlite"
 
-# -------------------------------
-# Inicializa la base de datos
-# -------------------------------
 def init_db():
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
 
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER UNIQUE,
-            username TEXT,
-            is_banned INTEGER DEFAULT 0,
-            is_admin INTEGER DEFAULT 0
-        )
-    ''')
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS users (
+        user_id INTEGER PRIMARY KEY,
+        username TEXT,
+        expire_at TIMESTAMP
+    )
+    """)
+
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS keys (
+        key TEXT PRIMARY KEY,
+        expire_at TIMESTAMP,
+        used INTEGER DEFAULT 0
+    )
+    """)
 
     conn.commit()
     conn.close()
 
-# -------------------------------
-# Registrar usuario
-# -------------------------------
-def register_user(user_id, username):
+# --------------------------
+# Funciones de keys
+# --------------------------
+
+def create_key(days: int) -> str:
+    key = secrets.token_hex(8)  # genera key aleatoria
+    expire_at = datetime.now() + timedelta(days=days)
+
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
-
-    cursor.execute('''
-        INSERT OR IGNORE INTO users (user_id, username)
-        VALUES (?, ?)
-    ''', (user_id, username))
-
+    cursor.execute("INSERT INTO keys (key, expire_at) VALUES (?, ?)", (key, expire_at))
     conn.commit()
     conn.close()
 
-# -------------------------------
-# Verificar si un usuario está baneado
-# -------------------------------
-def is_banned(user_id):
+    return key
+
+def redeem_key(user_id: int, username: str, key: str) -> bool:
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
 
-    cursor.execute('SELECT is_banned FROM users WHERE user_id = ?', (user_id,))
-    result = cursor.fetchone()
+    cursor.execute("SELECT key, expire_at, used FROM keys WHERE key = ?", (key,))
+    row = cursor.fetchone()
+    if not row:
+        conn.close()
+        return False  # key no existe
 
-    conn.close()
+    if row[2] == 1:  # ya usada
+        conn.close()
+        return False
 
-    if result:
-        return result[0] == 1
-    return False
+    expire_at = row[1]
 
-# -------------------------------
-# Banear usuario
-# -------------------------------
-def ban_user(user_id):
-    conn = sqlite3.connect(DB_NAME)
-    cursor = conn.cursor()
+    # actualizar usuario con la expiración de la key
+    cursor.execute("""
+        INSERT INTO users (user_id, username, expire_at)
+        VALUES (?, ?, ?)
+        ON CONFLICT(user_id) DO UPDATE SET expire_at=excluded.expire_at
+    """, (user_id, username, expire_at))
 
-    cursor.execute('UPDATE users SET is_banned = 1 WHERE user_id = ?', (user_id,))
-
+    # marcar la key como usada
+    cursor.execute("UPDATE keys SET used=1 WHERE key=?", (key,))
     conn.commit()
     conn.close()
 
-# -------------------------------
-# Desbanear usuario
-# -------------------------------
-def unban_user(user_id):
+    return True
+
+def has_valid_key(user_id: int) -> bool:
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
-
-    cursor.execute('UPDATE users SET is_banned = 0 WHERE user_id = ?', (user_id,))
-
-    conn.commit()
+    cursor.execute("SELECT expire_at FROM users WHERE user_id=?", (user_id,))
+    row = cursor.fetchone()
     conn.close()
 
-# -------------------------------
-# Verificar si es admin
-# -------------------------------
-def is_admin(user_id):
-    conn = sqlite3.connect(DB_NAME)
-    cursor = conn.cursor()
+    if not row:
+        return False
 
-    cursor.execute('SELECT is_admin FROM users WHERE user_id = ?', (user_id,))
-    result = cursor.fetchone()
-
-    conn.close()
-
-    if result:
-        return result[0] == 1
-    return False
-
-# -------------------------------
-# Hacer admin a un usuario
-# -------------------------------
-def make_admin(user_id):
-    conn = sqlite3.connect(DB_NAME)
-    cursor = conn.cursor()
-
-    cursor.execute('UPDATE users SET is_admin = 1 WHERE user_id = ?', (user_id,))
-
-    conn.commit()
-    conn.close()
+    expire_at = datetime.fromisoformat(row[0])
+    return expire_at > datetime.now()
