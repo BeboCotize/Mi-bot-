@@ -1,54 +1,55 @@
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
-from telegram.ext import CommandHandler, CallbackQueryHandler, CallbackContext
-from db import is_registered, is_banned
+from telegram import Update
+from telegram.ext import CallbackContext
+from db import is_user_registered, is_banned, ban_user, unban_user, add_admin_db, create_key
 
-ADMIN_ID = 6629555218  # <-- tu ID de Telegram
-
-def admin(update: Update, context: CallbackContext):
-    user_id = update.effective_user.id
-
-    if user_id != ADMIN_ID:
-        update.message.reply_text("❌ Solo el administrador puede acceder a este panel.")
+# 🚫 Comando .ban
+def ban(update: Update, context: CallbackContext):
+    if not update.message.reply_to_message:
+        update.message.reply_text("⚠️ Responde al mensaje del usuario que quieras banear con .ban")
         return
 
-    keyboard = [
-        [InlineKeyboardButton("🎬 Películas", callback_data="admin_peliculas")],
-        [InlineKeyboardButton("💳 Generar tarjeta", callback_data="admin_tarjeta")],
-        [InlineKeyboardButton("🚫 Banear usuario", callback_data="admin_ban")],
-        [InlineKeyboardButton("✅ Desbanear usuario", callback_data="admin_unban")]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    update.message.reply_text("⚙️ Panel de administración:", reply_markup=reply_markup)
+    user_id = update.message.reply_to_message.from_user.id
+    if is_user_registered(user_id):
+        ban_user(user_id)
+        update.message.reply_text(f"🚫 Usuario {user_id} baneado con éxito.")
+    else:
+        update.message.reply_text("⚠️ Ese usuario no está registrado.")
 
-def admin_menu(query, context: CallbackContext):
-    keyboard = [
-        [InlineKeyboardButton("🎬 Películas", callback_data="admin_peliculas")],
-        [InlineKeyboardButton("💳 Generar tarjeta", callback_data="admin_tarjeta")],
-        [InlineKeyboardButton("🚫 Banear usuario", callback_data="admin_ban")],
-        [InlineKeyboardButton("✅ Desbanear usuario", callback_data="admin_unban")]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    query.edit_message_text("⚙️ Panel de administración:", reply_markup=reply_markup)
-
-def admin_button(update: Update, context: CallbackContext):
-    query = update.callback_query
-    query.answer()
-    user_id = query.from_user.id
-
-    if user_id != ADMIN_ID:
-        query.edit_message_text("❌ No tienes permisos.")
+# ✅ Comando .unban
+def unban(update: Update, context: CallbackContext):
+    if not update.message.reply_to_message:
+        update.message.reply_text("⚠️ Responde al mensaje del usuario que quieras desbanear con .unban")
         return
 
-    if query.data == "admin_peliculas":
-        from peliculas import peliculas
-        peliculas(query, context)
-    elif query.data == "admin_tarjeta":
-        from tarjetas import tarjeta
-        tarjeta(query, context)
-    elif query.data == "admin_ban":
-        query.edit_message_text("✍️ Usa /ban <ID>")
-    elif query.data == "admin_unban":
-        query.edit_message_text("✍️ Usa /unban <ID>")
+    user_id = update.message.reply_to_message.from_user.id
+    if is_user_registered(user_id):
+        unban_user(user_id)
+        update.message.reply_text(f"✅ Usuario {user_id} desbaneado con éxito.")
+    else:
+        update.message.reply_text("⚠️ Ese usuario no está registrado.")
 
-admin_handler = CommandHandler("admin", admin)
-admin_button_handler = CallbackQueryHandler(admin_button, pattern="^admin_")
+# 👑 Comando .admin
+def add_admin(update: Update, context: CallbackContext):
+    if not update.message.reply_to_message:
+        update.message.reply_text("⚠️ Responde al mensaje del usuario que quieras hacer admin con .admin")
+        return
+
+    user_id = update.message.reply_to_message.from_user.id
+    if is_user_registered(user_id):
+        add_admin_db(user_id)
+        update.message.reply_text(f"👑 Usuario {user_id} ahora es administrador.")
+    else:
+        update.message.reply_text("⚠️ Ese usuario no está registrado.")
+
+# 🔑 Comando .genkey <días>
+def genkey(update: Update, context: CallbackContext):
+    if len(context.args) != 1:
+        update.message.reply_text("⚠️ Uso correcto: `.genkey <días>`")
+        return
+
+    try:
+        days = int(context.args[0])
+        key = create_key(days)
+        update.message.reply_text(f"🔑 Key generada (válida por {days} días):\n`{key}`", parse_mode="Markdown")
+    except ValueError:
+        update.message.reply_text("⚠️ Los días deben ser un número entero.")
