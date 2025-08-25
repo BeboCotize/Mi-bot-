@@ -1,11 +1,14 @@
 import os
 import random
 import string
+import json
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, MessageHandler, filters, CallbackContext
 from telegram.ext import CallbackQueryHandler
 
 TOKEN = os.getenv("BOT_TOKEN")
+
+DATA_FILE = "data.json"
 
 # Prefijos permitidos
 PREFIXES = [".", "!", "*", "?"]
@@ -15,8 +18,27 @@ users = {}
 banned_users = {}
 keys = []
 
-# Lista de administradores (tu ID de Telegram aquí)
-ADMINS = [123456789]
+# Lista de administradores (tu ID aquí)
+ADMINS = [6629555218]
+
+# ---------------- Persistencia ----------------
+def save_data():
+    data = {
+        "users": users,
+        "banned_users": banned_users,
+        "keys": keys
+    }
+    with open(DATA_FILE, "w") as f:
+        json.dump(data, f, indent=4)
+
+def load_data():
+    global users, banned_users, keys
+    if os.path.exists(DATA_FILE):
+        with open(DATA_FILE, "r") as f:
+            data = json.load(f)
+            users = data.get("users", {})
+            banned_users = data.get("banned_users", {})
+            keys = data.get("keys", [])
 
 # ---------------- Prefijos ----------------
 def has_prefix(text: str, command: str) -> bool:
@@ -26,16 +48,18 @@ async def prefixed_command(update: Update, context: CallbackContext, command: st
     text = update.message.text.strip()
     if has_prefix(text, command):
         await func(update, context)
+        save_data()
 
 # ---------------- Registro ----------------
 async def start(update: Update, context: CallbackContext):
-    user_id = update.message.from_user.id
+    user_id = str(update.message.from_user.id)
     if user_id in banned_users:
         await update.message.reply_text("🚫 Estás baneado y no puedes usar el bot.")
         return
 
     if user_id not in users:
         users[user_id] = {"registered": True, "key": None}
+        save_data()
 
     keyboard = [
         [InlineKeyboardButton("🛠 Tools", callback_data="tools")],
@@ -67,10 +91,11 @@ async def genkey(update: Update, context: CallbackContext):
         return
     key = ''.join(random.choices(string.ascii_uppercase + string.digits, k=12))
     keys.append(key)
+    save_data()
     await update.message.reply_text(f"🔑 Key generada: `{key}`", parse_mode="Markdown")
 
 async def redeem(update: Update, context: CallbackContext):
-    user_id = update.message.from_user.id
+    user_id = str(update.message.from_user.id)
     args = update.message.text.split()
     if len(args) < 2:
         await update.message.reply_text("❌ Usa: .redeem <KEY>")
@@ -79,6 +104,7 @@ async def redeem(update: Update, context: CallbackContext):
     if key in keys:
         users[user_id]["key"] = key
         keys.remove(key)
+        save_data()
         await update.message.reply_text("✅ Key canjeada con éxito. Ahora puedes usar todos los comandos.")
     else:
         await update.message.reply_text("❌ Key inválida o ya usada.")
@@ -92,8 +118,9 @@ async def ban(update: Update, context: CallbackContext):
     if len(args) < 2:
         await update.message.reply_text("❌ Usa: .ban <user_id>")
         return
-    uid = int(args[1])
+    uid = args[1]
     banned_users[uid] = "Baneado por admin"
+    save_data()
     await update.message.reply_text(f"🚫 Usuario {uid} baneado.")
 
 async def unban(update: Update, context: CallbackContext):
@@ -104,8 +131,9 @@ async def unban(update: Update, context: CallbackContext):
     if len(args) < 2:
         await update.message.reply_text("❌ Usa: .unban <user_id>")
         return
-    uid = int(args[1])
+    uid = args[1]
     banned_users.pop(uid, None)
+    save_data()
     await update.message.reply_text(f"✅ Usuario {uid} desbaneado.")
 
 async def users_list(update: Update, context: CallbackContext):
@@ -151,6 +179,7 @@ async def gen(update: Update, context: CallbackContext):
 
 # ---------------- Main ----------------
 def main():
+    load_data()  # cargar datos guardados
     app = Application.builder().token(TOKEN).build()
 
     # Registro
@@ -171,7 +200,7 @@ def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND,
         lambda u, c: prefixed_command(u, c, "gen", gen)))
 
-    print("🤖 Bot corriendo...")
+    print("🤖 Bot corriendo con persistencia en JSON...")
     app.run_polling()
 
 if __name__ == "__main__":
