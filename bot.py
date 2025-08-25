@@ -1,32 +1,26 @@
-import os
-from telegram.ext import Application, CommandHandler, PrefixHandler
-from registro import start_command, registrar_usuario
+import logging
+from telegram.ext import Application, CommandHandler, MessageHandler, filters
 from db import init_db
+from registro import start, registrar
+from comandos import custom_commands
 
-# Prefijos permitidos
-PREFIJOS = ".!*?"
+# 🔹 Configura tu TOKEN aquí
+TOKEN = "8271445453:AAGkEThWtDCPRfEFOUfzLBxc3lIriZ9SvsM"
+
+logging.basicConfig(level=logging.INFO)
 
 def main():
-    # Inicializar DB
     init_db()
-
-    # Token desde variables de entorno
-    TOKEN = os.getenv("BOT_TOKEN")
-    if not TOKEN:
-        raise ValueError("❌ BOT_TOKEN no configurado en Railway")
-
     app = Application.builder().token(TOKEN).build()
 
-    # /start normal (mensaje de bienvenida)
-    app.add_handler(CommandHandler("start", start_command))
+    # Comandos principales
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("registrar", registrar))
 
-    # /registrar también válido
-    app.add_handler(CommandHandler("registrar", registrar_usuario))
+    # Prefijos personalizados (. ! * ?)
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, custom_commands))
 
-    # Prefijos (. ! * ?) para registrar
-    app.add_handler(PrefixHandler(PREFIJOS, "registrar", registrar_usuario))
-
-    print("🤖 Bot iniciado correctamente...")
+    logging.info("🤖 Bot iniciado...")
     app.run_polling()
 
 if __name__ == "__main__":
