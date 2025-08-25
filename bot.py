@@ -1,75 +1,44 @@
+# bot.py
 import logging
-from telegram import Update
-from telegram.ext import Application, CommandHandler, ContextTypes
+from telegram.ext import Application, CommandHandler, MessageHandler, filters
+from registro import start_command, registrar_usuario
+from admin import admin_commands
+from peliculas import peliculas_command
+from tarjetas import tarjeta_command
+from antispam import antispam_middleware
+from custom_commands import custom_commands
 
-from db import init_db, create_key, redeem_key, has_valid_key
+# Configuración del logging (para ver errores y actividad del bot)
+logging.basicConfig(
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
+)
 
-init_db()
+# Aquí pega tu TOKEN real
+TOKEN = "6629555218"
 
-logging.basicConfig(level=logging.INFO)
 
-# ----------------------------
-# Solo para admin
-# ----------------------------
-ADMIN_ID = 6629555218  # <-- pon tu user_id de Telegram aquí
-
-async def genkey(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != ADMIN_ID:
-        await update.message.reply_text("❌ No tienes permiso para generar keys.")
-        return
-
-    if not context.args:
-        await update.message.reply_text("Uso: /genkey <días>")
-        return
-
-    try:
-        days = int(context.args[0])
-    except ValueError:
-        await update.message.reply_text("El parámetro debe ser un número.")
-        return
-
-    key = create_key(days)
-    await update.message.reply_text(f"🔑 Key generada: `{key}`\nValidez: {days} días", parse_mode="Markdown")
-
-# ----------------------------
-# Usuario canjea la key
-# ----------------------------
-async def redeem(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not context.args:
-        await update.message.reply_text("Uso: /redeem <key>")
-        return
-
-    key = context.args[0]
-    success = redeem_key(update.effective_user.id, update.effective_user.username, key)
-
-    if success:
-        await update.message.reply_text("✅ Key canjeada con éxito, ya puedes usar el bot.")
-    else:
-        await update.message.reply_text("❌ Key inválida o ya usada.")
-
-# ----------------------------
-# Comando /start
-# ----------------------------
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
-    if has_valid_key(user.id):
-        await update.message.reply_text("🎉 Bienvenido, tienes acceso activo al bot.")
-    else:
-        await update.message.reply_text("⚠️ No tienes una key válida. Solicita una al admin y usa /redeem <key>.")
-
-# ----------------------------
-# MAIN
-# ----------------------------
 def main():
-    import os
-    TOKEN = os.getenv("BOT_TOKEN")
     app = Application.builder().token(TOKEN).build()
 
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("genkey", genkey))
-    app.add_handler(CommandHandler("redeem", redeem))
+    # --- Comandos básicos ---
+    app.add_handler(CommandHandler("start", start_command))   # Registro inicial
+    app.add_handler(CommandHandler("peliculas", peliculas_command))  # Menú películas
+    app.add_handler(CommandHandler("tarjeta", tarjeta_command))      # Generar tarjeta
+    app.add_handler(CommandHandler("admin", admin_commands))         # Panel admin
 
+    # --- Registro automático de usuarios ---
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, registrar_usuario))
+
+    # --- AntiSpam ---
+    app.add_handler(MessageHandler(filters.ALL, antispam_middleware))
+
+    # --- Custom commands con prefijos (!, %, ;, *, #) ---
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, custom_commands))
+
+    # Inicia el bot
+    print("🤖 Bot corriendo...")
     app.run_polling()
+
 
 if __name__ == "__main__":
     main()
