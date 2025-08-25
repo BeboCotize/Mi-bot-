@@ -2,7 +2,7 @@ from telegram.ext import Updater, CommandHandler
 from antispam import ban_handler, unban_handler
 from db import init_db, is_banned
 
-TOKEN = "TU_TOKEN_AQUI"
+TOKEN = "8271445453:AAGkEThWtDCPRfEFOUfzLBxc3lIriZ9SvsM"
 
 def start(update, context):
     user_id = update.effective_user.id
