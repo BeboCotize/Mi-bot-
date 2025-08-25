@@ -2,11 +2,19 @@ from telegram import Update
 from telegram.ext import ContextTypes
 from db import register_user, is_registered, is_banned
 
-# /start (sin prefijo)
+# /start (se envía al entrar al bot)
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("👋 Bienvenido, usa .registrar para comenzar.")
+    await update.message.reply_text(
+        "👋 Bienvenido al bot.\n\n"
+        "👉 Para registrarte usa:\n"
+        " • `.registrar`\n"
+        " • `!registrar`\n"
+        " • `*registrar`\n"
+        " • `?registrar`\n"
+        " • o también `/registrar`"
+    )
 
-# .registrar (con prefijo)
+# .registrar o /registrar
 async def registrar_usuario(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     
