@@ -11,7 +11,7 @@ def main():
     init_db()
 
     # Token desde variables de entorno
-    TOKEN = os.getenv("8271445453:AAGkEThWtDCPRfEFOUfzLBxc3lIriZ9SvsM")
+    TOKEN = os.getenv("BOT_TOKEN")
     if not TOKEN:
         raise ValueError("❌ BOT_TOKEN no configurado en Railway")
 
