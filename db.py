@@ -1,45 +1,23 @@
-import sqlite3
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy import create_engine
+from models import Base, User
 
-DB_NAME = "usuarios.db"
+engine = create_engine("sqlite:///users.db")
+Session = sessionmaker(bind=engine)
 
 def init_db():
-    conn = sqlite3.connect(DB_NAME)
-    c = conn.cursor()
-    c.execute("""
-        CREATE TABLE IF NOT EXISTS usuarios (
-            user_id INTEGER PRIMARY KEY,
-            username TEXT,
-            registrado INTEGER DEFAULT 0,
-            baneado INTEGER DEFAULT 0
-        )
-    """)
-    conn.commit()
-    conn.close()
+    Base.metadata.create_all(engine)
 
-def registrar_usuario(user_id: int, username: str):
-    conn = sqlite3.connect(DB_NAME)
-    c = conn.cursor()
-    c.execute("INSERT OR IGNORE INTO usuarios (user_id, username) VALUES (?, ?)", (user_id, username))
-    conn.commit()
-    conn.close()
+def add_user(user_id: int):
+    session = Session()
+    if not session.query(User).filter_by(id=user_id).first():
+        user = User(id=user_id)
+        session.add(user)
+        session.commit()
+    session.close()
 
-def marcar_registrado(user_id: int):
-    conn = sqlite3.connect(DB_NAME)
-    c = conn.cursor()
-    c.execute("UPDATE usuarios SET registrado = 1 WHERE user_id = ?", (user_id,))
-    conn.commit()
-    conn.close()
-
-def ban_user(user_id: int, reason: str = "Baneado"):
-    conn = sqlite3.connect(DB_NAME)
-    c = conn.cursor()
-    c.execute("UPDATE usuarios SET baneado = 1 WHERE user_id = ?", (user_id,))
-    conn.commit()
-    conn.close()
-
-def unban_user(user_id: int):
-    conn = sqlite3.connect(DB_NAME)
-    c = conn.cursor()
-    c.execute("UPDATE usuarios SET baneado = 0 WHERE user_id = ?", (user_id,))
-    conn.commit()
-    conn.close()
+def is_user_registered(user_id: int) -> bool:
+    session = Session()
+    exists = session.query(User).filter_by(id=user_id).first() is not None
+    session.close()
+    return exists
