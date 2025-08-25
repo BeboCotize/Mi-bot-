@@ -1,27 +1,21 @@
-import logging
-from telegram.ext import Application, CommandHandler, MessageHandler, filters
-from db import init_db
-from registro import start, registrar
-from comandos import custom_commands
+from telegram.ext import Application, CommandHandler
+import os
 
-# 🔹 Configura tu TOKEN aquí
-TOKEN = "8271445453:AAGkEThWtDCPRfEFOUfzLBxc3lIriZ9SvsM"
+TOKEN = os.getenv("BOT_TOKEN")  # 🔑 Pon tu token en variables de entorno en Railway
 
-logging.basicConfig(level=logging.INFO)
+app = Application.builder().token(TOKEN).build()
 
-def main():
-    init_db()
-    app = Application.builder().token(TOKEN).build()
+# --- Comandos básicos ---
+async def start(update, context):
+    await update.message.reply_text("🚀 ¡Hola! Estoy vivo en Railway.")
 
-    # Comandos principales
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("registrar", registrar))
+async def ping(update, context):
+    await update.message.reply_text("🏓 Pong!")
 
-    # Prefijos personalizados (. ! * ?)
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, custom_commands))
-
-    logging.info("🤖 Bot iniciado...")
-    app.run_polling()
+# --- Handlers ---
+app.add_handler(CommandHandler("start", start))
+app.add_handler(CommandHandler("ping", ping))
 
 if __name__ == "__main__":
-    main()
+    print("✅ Bot iniciado en Railway...")
+    app.run_polling()
