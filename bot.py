@@ -3,245 +3,259 @@ import os
 import random
 import string
 from datetime import datetime, timedelta
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
-from telegram.ext import (
-    Application,
-    CommandHandler,
-    MessageHandler,
-    CallbackQueryHandler,
-    ContextTypes,
-    filters,
-)
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import Application, CallbackContext, MessageHandler, filters, CallbackQueryHandler
 
-# ================== CONFIG ==================
-TOKEN = "8271445453:AAGkEThWtDCPRfEFOUfzLBxc3lIriZ9SvsM"   # <-- pon tu token aquí
-ADMIN_IDS = [6629555218]      # <-- IDs de admins
-
-# Archivos de almacenamiento
+# Archivos de datos
 USERS_FILE = "users.json"
 KEYS_FILE = "keys.json"
 
-# ================== UTILIDADES ==================
+# Admins
+ADMINS = ["6629555218"]  # 👉 Pon aquí tus IDs de admin
 
-def load_json(filename, default):
-    if not os.path.exists(filename):
-        return default
-    with open(filename, "r") as f:
-        try:
-            return json.load(f)
-        except:
-            return default
+# ==========================
+# Utils
+# ==========================
 
-def save_json(filename, data):
-    with open(filename, "w") as f:
+def load_json(file):
+    if not os.path.exists(file):
+        with open(file, "w") as f:
+            json.dump({}, f)
+    with open(file, "r") as f:
+        return json.load(f)
+
+def save_json(file, data):
+    with open(file, "w") as f:
         json.dump(data, f, indent=4)
 
-def get_users():
-    return load_json(USERS_FILE, {})
+def is_admin(user_id):
+    return str(user_id) in ADMINS
 
-def save_users(data):
-    save_json(USERS_FILE, data)
+def is_user_active(user_id):
+    users = load_json(USERS_FILE)
+    if str(user_id) in users and users[str(user_id)]["status"] == "active":
+        exp = datetime.fromisoformat(users[str(user_id)]["expire"])
+        return exp > datetime.now()
+    return False
 
-def get_keys():
-    return load_json(KEYS_FILE, {})
+# ==========================
+# Keys
+# ==========================
 
-def save_keys(data):
-    save_json(KEYS_FILE, data)
+def generate_key(days):
+    keys = load_json(KEYS_FILE)
+    key = ''.join(random.choices(string.ascii_uppercase + string.digits, k=10))
+    expire = datetime.now() + timedelta(days=days)
+    keys[key] = {"expire": expire.isoformat(), "used": False}
+    save_json(KEYS_FILE, keys)
+    return key, expire
 
-def is_admin(user_id: int) -> bool:
-    return user_id in ADMIN_IDS
-
-def is_banned(user_id: int) -> bool:
-    users = get_users()
-    return users.get(str(user_id), {}).get("banned", False)
-
-def is_active(user_id: int) -> bool:
-    users = get_users()
-    info = users.get(str(user_id), {})
-    return info.get("active", False) and not info.get("banned", False)
-
-# ================== HANDLERS ==================
-
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if not is_active(user_id):
-        await update.message.reply_text("❌ Debes activar el bot con una key.\nUsa: `.claim <key>`")
-        return
-    await update.message.reply_text("✅ Bienvenido! Usa `.gen` para generar tarjetas.")
-
-# --- CLAIM KEY ---
-async def claim(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def claim(update: Update, context: CallbackContext, args):
     user_id = str(update.effective_user.id)
-    if len(context.args) != 1:
-        await update.message.reply_text("Uso: `.claim <key>`")
+    if not args:
+        await update.message.reply_text("❌ Usa: .claim <key>")
         return
-
-    key = context.args[0]
-    keys = get_keys()
-    if key not in keys:
-        await update.message.reply_text("❌ Key inválida.")
-        return
-
-    data = keys[key]
-    if data["used"]:
-        await update.message.reply_text("❌ Esa key ya fue usada.")
-        return
-
-    expiry = datetime.now() + timedelta(days=int(data["days"]))
-    users = get_users()
-    users[user_id] = {"active": True, "banned": False, "expiry": expiry.strftime("%Y-%m-%d %H:%M:%S")}
-    save_users(users)
-
-    keys[key]["used"] = True
-    save_keys(keys)
-
-    await update.message.reply_text(f"✅ Key activada! Expira el: {expiry.strftime('%Y-%m-%d %H:%M:%S')}")
-
-# --- GENERAR KEYS (admin) ---
-async def genkey(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if not is_admin(user_id):
-        return await update.message.reply_text("❌ No tienes permisos.")
-
-    if len(context.args) != 1:
-        return await update.message.reply_text("Uso: `.genkey <días>`")
-
-    try:
-        days = int(context.args[0])
-    except:
-        return await update.message.reply_text("❌ Debes poner un número de días.")
-
-    key = "".join(random.choices(string.ascii_uppercase + string.digits, k=12))
-    keys = get_keys()
-    keys[key] = {"days": days, "used": False}
-    save_keys(keys)
-
-    await update.message.reply_text(f"🔑 Key generada:\n`{key}` ({days} días)", parse_mode="Markdown")
-
-# --- BAN ---
-async def ban(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_admin(update.effective_user.id):
-        return await update.message.reply_text("❌ No tienes permisos.")
-
-    if len(context.args) != 1:
-        return await update.message.reply_text("Uso: `.ban <user_id>`")
-
-    uid = context.args[0]
-    users = get_users()
-    if uid not in users:
-        users[uid] = {"active": False, "banned": True}
+    key = args[0]
+    keys = load_json(KEYS_FILE)
+    if key in keys and not keys[key]["used"]:
+        expire = datetime.fromisoformat(keys[key]["expire"])
+        if expire > datetime.now():
+            users = load_json(USERS_FILE)
+            users[user_id] = {"status": "active", "expire": expire.isoformat(), "banned": False}
+            save_json(USERS_FILE, users)
+            keys[key]["used"] = True
+            save_json(KEYS_FILE, keys)
+            await update.message.reply_text(f"✅ Key activada! Expira el: {expire}")
+        else:
+            await update.message.reply_text("❌ La key ya expiró.")
     else:
-        users[uid]["banned"] = True
-    save_users(users)
+        await update.message.reply_text("❌ Key inválida o ya usada.")
 
-    await update.message.reply_text(f"🚫 Usuario {uid} baneado.")
+# ==========================
+# Admin commands
+# ==========================
 
-# --- UNBAN ---
-async def unban(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_admin(update.effective_user.id):
-        return await update.message.reply_text("❌ No tienes permisos.")
+async def genkey(update: Update, context: CallbackContext, args):
+    user_id = str(update.effective_user.id)
+    if not is_admin(user_id):
+        await update.message.reply_text("❌ No tienes permisos.")
+        return
+    if not args:
+        await update.message.reply_text("❌ Usa: .genkey <días>")
+        return
+    days = int(args[0])
+    key, expire = generate_key(days)
+    await update.message.reply_text(f"🔑 Key generada: {key} ({days} días)")
 
-    if len(context.args) != 1:
-        return await update.message.reply_text("Uso: `.unban <user_id>`")
+async def ban(update: Update, context: CallbackContext, args):
+    user_id = str(update.effective_user.id)
+    if not is_admin(user_id):
+        await update.message.reply_text("❌ No tienes permisos.")
+        return
+    if not args:
+        await update.message.reply_text("❌ Usa: .ban <id>")
+        return
+    target_id = args[0]
+    users = load_json(USERS_FILE)
+    if target_id in users:
+        users[target_id]["banned"] = True
+        save_json(USERS_FILE, users)
+        await update.message.reply_text(f"🚫 Usuario {target_id} baneado.")
+    else:
+        await update.message.reply_text("❌ Usuario no encontrado.")
 
-    uid = context.args[0]
-    users = get_users()
-    if uid not in users:
-        return await update.message.reply_text("Ese usuario no existe en la base de datos.")
+async def unban(update: Update, context: CallbackContext, args):
+    user_id = str(update.effective_user.id)
+    if not is_admin(user_id):
+        await update.message.reply_text("❌ No tienes permisos.")
+        return
+    if not args:
+        await update.message.reply_text("❌ Usa: .unban <id>")
+        return
+    target_id = args[0]
+    users = load_json(USERS_FILE)
+    if target_id in users:
+        users[target_id]["banned"] = False
+        save_json(USERS_FILE, users)
+        await update.message.reply_text(f"✅ Usuario {target_id} desbaneado.")
+    else:
+        await update.message.reply_text("❌ Usuario no encontrado.")
 
-    users[uid]["banned"] = False
-    save_users(users)
-
-    await update.message.reply_text(f"✅ Usuario {uid} desbaneado.")
-
-# --- ADMIN LIST ---
-async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_admin(update.effective_user.id):
-        return await update.message.reply_text("❌ No tienes permisos.")
-
-    users = get_users()
-    msg = "📋 Lista de usuarios:\n\n"
-    for uid, info in users.items():
-        estado = "🚫 Baneado" if info.get("banned") else "✅ Activo" if info.get("active") else "❌ Inactivo"
-        msg += f"👤 {uid} → {estado}\n"
+async def admin(update: Update, context: CallbackContext):
+    user_id = str(update.effective_user.id)
+    if not is_admin(user_id):
+        await update.message.reply_text("❌ No tienes permisos.")
+        return
+    users = load_json(USERS_FILE)
+    msg = "📋 Usuarios:\n"
+    for uid, data in users.items():
+        estado = "⛔ Baneado" if data.get("banned", False) else "✅ Activo"
+        msg += f"ID: {uid} | Estado: {estado} | Expira: {data['expire']}\n"
     await update.message.reply_text(msg)
 
-# --- GEN (tarjetas random con Luhn simple) ---
-def luhn_reservado(cc: str) -> bool:
-    total = 0
-    reverse = cc[::-1]
-    for i, num in enumerate(reverse):
-        n = int(num)
-        if i % 2 == 1:
-            n *= 2
-            if n > 9:
-                n -= 9
-        total += n
-    return total % 10 == 0
+# ==========================
+# Botones
+# ==========================
 
-def generar_tarjeta():
-    while True:
-        cc = "".join(random.choice(string.digits) for _ in range(16))
-        if luhn_reservado(cc):
-            mes = str(random.randint(1, 12)).zfill(2)
-            ano = str(random.randint(2025, 2030))
-            cvv = str(random.randint(100, 999))
-            return f"{cc}|{mes}|{ano}|{cvv}"
-
-async def gen(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if not is_active(user_id):
-        return await update.message.reply_text("❌ Debes activar el bot con una key.\nUsa `.claim <key>`")
-    card = generar_tarjeta()
-    await update.message.reply_text(f"💳 {card}")
-
-# --- BOTONES ---
-async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_active(update.effective_user.id):
-        return await update.message.reply_text("❌ Debes activar el bot con una key.\nUsa `.claim <key>`")
-
+async def start(update: Update, context: CallbackContext):
     keyboard = [
         [InlineKeyboardButton("🔧 Herramientas", callback_data="tools")],
         [InlineKeyboardButton("🌐 Gateway", callback_data="gateway")]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text("📌 Menú principal:", reply_markup=reply_markup)
+    await update.message.reply_text("Bienvenido! Usa los botones:", reply_markup=reply_markup)
 
-async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def button_handler(update: Update, context: CallbackContext):
     query = update.callback_query
     await query.answer()
-
     if query.data == "tools":
-        await query.edit_message_text("🔧 Aquí están las herramientas disponibles.")
+        await query.edit_message_text("🛠 Herramientas")
     elif query.data == "gateway":
         keyboard = [
-            [InlineKeyboardButton("Hola xd 1", callback_data="xd1")],
-            [InlineKeyboardButton("Hola xd 2", callback_data="xd2")],
-            [InlineKeyboardButton("Hola xd 3", callback_data="xd3")],
-            [InlineKeyboardButton("Hola xd 4", callback_data="xd4")]
+            [InlineKeyboardButton("Hola xd 1", callback_data="h1")],
+            [InlineKeyboardButton("Hola xd 2", callback_data="h2")],
+            [InlineKeyboardButton("Hola xd 3", callback_data="h3")],
+            [InlineKeyboardButton("Hola xd 4", callback_data="h4")]
         ]
         await query.edit_message_text("🌐 Gateway:", reply_markup=InlineKeyboardMarkup(keyboard))
+
+# ==========================
+# Generador de tarjetas
+# ==========================
+
+def luhn_resolver(number):
+    digits = [int(x) for x in number]
+    for i in range(len(digits)-2, -1, -2):
+        d = digits[i] * 2
+        if d > 9:
+            d -= 9
+        digits[i] = d
+    return (10 - (sum(digits) % 10)) % 10
+
+def generar_tarjeta(bin_input=None, mes=None, anio=None, cvv=None):
+    if not bin_input:
+        bin_input = str(random.randint(400000, 499999))
+
+    bin_input = ''.join([str(random.randint(0,9)) if c in ['x','X'] else c for c in bin_input])
+
+    if len(bin_input) < 15:
+        while len(bin_input) < 15:
+            bin_input += str(random.randint(0,9))
+
+    check_digit = luhn_resolver(bin_input[:15])
+    tarjeta = bin_input[:15] + str(check_digit)
+
+    if not mes:
+        mes = str(random.randint(1,12)).zfill(2)
+    if not anio:
+        anio = str(random.randint(2025,2032))
+    if not cvv or cvv.lower() == "rnd":
+        cvv = str(random.randint(100,999))
+
+    return f"{tarjeta}|{mes}|{anio}|{cvv}"
+
+async def gen(update: Update, context: CallbackContext, args):
+    user_id = str(update.effective_user.id)
+    users = load_json(USERS_FILE)
+
+    if user_id not in users or not is_user_active(user_id) or users[user_id].get("banned", False):
+        await update.message.reply_text("❌ Debes activar el bot con una key. Usa .claim <key>")
+        return
+
+    results = []
+    if not args:
+        for _ in range(10):
+            results.append(generar_tarjeta())
     else:
-        await query.edit_message_text(f"Hiciste click en: {query.data}")
+        parts = args[0].split("|")
+        bin_input = parts[0] if len(parts) > 0 else None
+        mes = parts[1] if len(parts) > 1 else None
+        anio = parts[2] if len(parts) > 2 else None
+        cvv = parts[3] if len(parts) > 3 else None
+        cantidad = 10 if "x" in (bin_input or "") else 1
+        for _ in range(cantidad):
+            results.append(generar_tarjeta(bin_input, mes, anio, cvv))
 
-# ================== MAIN ==================
+    await update.message.reply_text("\n".join(results))
+
+# ==========================
+# Handler central (para comandos con ".")
+# ==========================
+
+async def message_handler(update: Update, context: CallbackContext):
+    text = update.message.text.strip()
+    if not text.startswith("."):
+        return
+
+    parts = text.split()
+    command = parts[0][1:].lower()
+    args = parts[1:]
+
+    if command == "claim":
+        await claim(update, context, args)
+    elif command == "genkey":
+        await genkey(update, context, args)
+    elif command == "ban":
+        await ban(update, context, args)
+    elif command == "unban":
+        await unban(update, context, args)
+    elif command == "admin":
+        await admin(update, context)
+    elif command == "gen":
+        await gen(update, context, args)
+
+# ==========================
+# Main
+# ==========================
+
 def main():
-    app = Application.builder().token(TOKEN).build()
+    app = Application.builder().token("AQUI_TU_TOKEN").build()
 
-    # Comandos
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("claim", claim))
-    app.add_handler(CommandHandler("genkey", genkey))
-    app.add_handler(CommandHandler("ban", ban))
-    app.add_handler(CommandHandler("unban", unban))
-    app.add_handler(CommandHandler("admin", admin))
-    app.add_handler(CommandHandler("gen", gen))
-    app.add_handler(CommandHandler("menu", menu))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message_handler))
+    app.add_handler(MessageHandler(filters.COMMAND, message_handler))  # fallback por si alguien usa "/"
+    app.add_handler(MessageHandler(filters.Regex(r"^\.start$"), start))
+    app.add_handler(CallbackQueryHandler(button_handler))
 
-    # Handler de botones
-    app.add_handler(CallbackQueryHandler(buttons))
-
-    print("🤖 Bot corriendo...")
     app.run_polling()
 
 if __name__ == "__main__":
