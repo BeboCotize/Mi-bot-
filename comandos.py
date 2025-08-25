@@ -1,108 +1,125 @@
+# comandos.py
 import random
-from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
+import datetime
+from telegram import Update
 from telegram.ext import ContextTypes
 from db import (
-    ban_user, unban_user, is_user_admin, create_key, redeem_key,
-    user_has_access, is_user_banned
+    add_user, is_user_registered, is_banned, ban_user, unban_user,
+    is_admin, add_admin, generate_key, redeem_key
 )
-from utils import luhn_complete, generate_card
 
-ADMIN_ID = 6629555218  # tu ID admin principal
+# -------------------- Luhn --------------------
+def luhn_resolve(number):
+    digits = [int(x) for x in str(number)]
+    for i in range(len(digits) - 2, -1, -2):
+        digits[i] *= 2
+        if digits[i] > 9:
+            digits[i] -= 9
+    total = sum(digits)
+    return (10 - (total % 10)) % 10
 
-# ---------------------------
-# BOTONES
-# ---------------------------
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
 
-    if not user_has_access(user_id):
-        keyboard = [[
-            InlineKeyboardButton("🛠 Tools", callback_data="tools"),
-            InlineKeyboardButton("🌐 Gateway", callback_data="gateway")
-        ]]
-        return await update.message.reply_text(
-            "👋 Bienvenido!\n\nPara usar el bot debes registrarte.\n"
-            "Usa `/redeem <KEY>` para canjear una key.",
-            reply_markup=InlineKeyboardMarkup(keyboard)
-        )
+def generate_card(bin_pattern):
+    """Generador de tarjetas reales con Luhn"""
+    if "x" in bin_pattern.lower():
+        card = ""
+        for ch in bin_pattern:
+            if ch.lower() == "x":
+                card += str(random.randint(0, 9))
+            else:
+                card += ch
+        check_digit = luhn_resolve(card)
+        card = card[:-1] + str(check_digit)
+    else:
+        card = bin_pattern
+        if len(card) < 16:
+            while len(card) < 15:
+                card += str(random.randint(0, 9))
+            card += str(luhn_resolve(card))
 
-    await update.message.reply_text("✅ Ya tienes acceso, usa los comandos con prefijo .")
+    # Fecha y CVV
+    month = str(random.randint(1, 12)).zfill(2)
+    year = str(random.randint(2025, 2030))
+    cvv = str(random.randint(100, 999))
+    return f"{card}|{month}|{year}|{cvv}"
 
-async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
 
-    if query.data == "tools":
-        await query.edit_message_text("🛠 Aquí están tus herramientas.")
+# -------------------- COMANDOS --------------------
 
-    elif query.data == "gateway":
-        keyboard = [[
-            InlineKeyboardButton("Hola 1", callback_data="hola"),
-            InlineKeyboardButton("Hola 2", callback_data="hola"),
-            InlineKeyboardButton("Hola 3", callback_data="hola"),
-            InlineKeyboardButton("Hola 4", callback_data="hola"),
-        ]]
-        await query.edit_message_text("🌐 Gateway:", reply_markup=InlineKeyboardMarkup(keyboard))
-
-    elif query.data == "hola":
-        await query.answer("hola xd", show_alert=True)
-
-# ---------------------------
-# ADMIN COMMANDS
-# ---------------------------
 async def ban(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_user_admin(update.effective_user.id):
-        return await update.message.reply_text("❌ No tienes permisos.")
+    user_id = update.message.from_user.id
+    if not is_admin(user_id):
+        await update.message.reply_text("❌ No tienes permisos para usar este comando.")
+        return
     try:
-        _, uid = update.message.text.split()
-        ban_user(int(uid))
-        await update.message.reply_text(f"🚫 Usuario {uid} baneado")
+        target = int(context.args[0])
+        ban_user(target)
+        await update.message.reply_text(f"🚫 Usuario {target} baneado.")
     except:
         await update.message.reply_text("Uso: .ban <user_id>")
 
+
 async def unban(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_user_admin(update.effective_user.id):
-        return await update.message.reply_text("❌ No tienes permisos.")
+    user_id = update.message.from_user.id
+    if not is_admin(user_id):
+        await update.message.reply_text("❌ No tienes permisos para usar este comando.")
+        return
     try:
-        _, uid = update.message.text.split()
-        unban_user(int(uid))
-        await update.message.reply_text(f"✅ Usuario {uid} desbaneado")
+        target = int(context.args[0])
+        unban_user(target)
+        await update.message.reply_text(f"✅ Usuario {target} desbaneado.")
     except:
         await update.message.reply_text("Uso: .unban <user_id>")
 
-async def genkey(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_user_admin(update.effective_user.id):
-        return await update.message.reply_text("❌ No tienes permisos.")
+
+async def make_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.message.from_user.id
+    if not is_admin(user_id):
+        await update.message.reply_text("❌ No tienes permisos para usar este comando.")
+        return
     try:
-        _, days = update.message.text.split()
-        key = create_key(int(days))
-        await update.message.reply_text(f"🔑 Key generada válida por {days} días:\n`{key}`", parse_mode="Markdown")
+        target = int(context.args[0])
+        add_admin(target)
+        await update.message.reply_text(f"👑 Usuario {target} ahora es administrador.")
+    except:
+        await update.message.reply_text("Uso: .admin <user_id>")
+
+
+async def genkey(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.message.from_user.id
+    if not is_admin(user_id):
+        await update.message.reply_text("❌ No tienes permisos para usar este comando.")
+        return
+    try:
+        days = int(context.args[0])
+        key = f"KEY-{random.randint(10000,99999)}"
+        generate_key(key, days)
+        await update.message.reply_text(f"🔑 Key generada:\n`{key}`\nValidez: {days} días", parse_mode="Markdown")
     except:
         await update.message.reply_text("Uso: .genkey <días>")
 
-# ---------------------------
-# USER COMMANDS
-# ---------------------------
+
 async def redeem(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.message.from_user.id
     try:
-        _, key = update.message.text.split()
-        if redeem_key(update.effective_user.id, key):
-            await update.message.reply_text("✅ Key canjeada, ahora tienes acceso.")
+        key = context.args[0]
+        if redeem_key(user_id, key):
+            await update.message.reply_text("✅ Key canjeada correctamente. Acceso activado.")
         else:
             await update.message.reply_text("❌ Key inválida o ya usada.")
     except:
-        await update.message.reply_text("Uso: /redeem <KEY>")
+        await update.message.reply_text("Uso: .redeem <key>")
+
 
 async def gen(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if not user_has_access(user_id):
-        return await update.message.reply_text("⚠️ Necesitas canjear una key para usar este comando.")
-
-    text = update.message.text.strip().split(" ", 1)
-    if len(text) == 1:
-        return await update.message.reply_text("Uso: .gen <BIN/PATRÓN>")
-
-    bin_input = text[1]
-    cards = generate_card(bin_input, amount=10)
-    msg = "💳 **Tarjetas generadas**:\n\n" + "\n".join(cards)
-    await update.message.reply_text(msg, parse_mode="Markdown")
+    user_id = update.message.from_user.id
+    if not is_user_registered(user_id):
+        await update.message.reply_text("❌ Debes canjear una key para usar este comando.")
+        return
+    try:
+        bin_pattern = context.args[0]
+        results = [generate_card(bin_pattern) for _ in range(10)]
+        msg = "💳 Tarjetas generadas:\n\n" + "\n".join(results)
+        await update.message.reply_text(msg)
+    except:
+        await update.message.reply_text("Uso: .gen <BIN/Pattern>")
