@@ -1,9 +1,6 @@
 import random
-from telegram import Update
-from telegram.ext import ContextTypes
 
 def luhn_checksum(card_number: str) -> int:
-    """Calcula el dígito de control usando algoritmo de Luhn"""
     def digits_of(n):
         return [int(d) for d in str(n)]
     digits = digits_of(card_number)
@@ -14,46 +11,28 @@ def luhn_checksum(card_number: str) -> int:
         checksum += sum(digits_of(d*2))
     return checksum % 10
 
-def completar_luhn(card_number: str) -> str:
-    """Genera el último dígito válido para que el número pase Luhn"""
-    for i in range(10):
-        posible = card_number + str(i)
-        if luhn_checksum(posible) == 0:
-            return posible
-    return card_number + "0"  # fallback
+def calculate_luhn(card_number: str) -> str:
+    check_digit = luhn_checksum(card_number + "0")
+    return card_number + str((10 - check_digit) % 10)
 
-def generar_tarjeta(bin_pattern: str) -> str:
-    """Genera una tarjeta a partir de un patrón con X, usando Luhn"""
-    partes = bin_pattern.split("|")
-
-    bin_code = partes[0]
-    mes = partes[1] if len(partes) > 1 and partes[1] else str(random.randint(1, 12)).zfill(2)
-    year = partes[2] if len(partes) > 2 and partes[2] else str(random.randint(2025, 2030))
-    cvv = partes[3] if len(partes) > 3 else "rnd"
-
-    # Reemplazar X por dígitos aleatorios excepto el último
-    parcial = ""
-    for c in bin_code:
+def generate_card(pattern: str, month=None, year=None, cvv_random=True):
+    # Reemplazar x y rnd
+    base = ""
+    for c in pattern:
         if c.lower() == "x":
-            parcial += str(random.randint(0, 9))
+            base += str(random.randint(0,9))
+        elif c.lower() == "r":
+            base += str(random.randint(0,9))
+        elif c.isdigit():
+            base += c
         else:
-            parcial += c
-
-    # Si la longitud es <16, completamos con dígito Luhn
-    if len(parcial) < 15:
-        parcial = parcial.ljust(15, "0")  # rellena con 0 hasta tener 15
-    numero_final = completar_luhn(parcial[:15])  # genera número válido de 16 dígitos
-
-    # Generar CVV si es rnd
-    if cvv.lower() == "rnd":
-        cvv = str(random.randint(100, 999))
-
-    return f"{numero_final}|{mes}|{year}|{cvv}"
-
-async def generar_cc(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not context.args:
-        await update.message.reply_text("⚠️ Usa el comando con un patrón válido.\n\nEjemplo:\n`.gen 402347070930xxxx|04|2028|rnd`")
-        return
-
-    bin_pattern = context.args[0]
-    tarjetas = [generar_tarjeta(bin_pattern) for _
+            continue
+    
+    # Luhn
+    card = calculate_luhn(base[:-1])
+    
+    mm = month if month else str(random.randint(1,12)).zfill(2)
+    yy = year if year else str(random.randint(2025,2030))
+    cvv = str(random.randint(100,999)) if cvv_random else "000"
+    
+    return f"{card}|{mm}|{yy}|{cvv}"
