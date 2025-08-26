@@ -160,7 +160,7 @@ async def pay(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("⚠️ Uso correcto: `.pay CC|MM|YYYY|CVV`")
             return
 
-        tarjetas = context.args  # Permite varias tarjetas separadas por espacio
+        tarjetas = context.args  # permite varias tarjetas separadas por espacio
         resultados = []
 
         for tarjeta in tarjetas:
