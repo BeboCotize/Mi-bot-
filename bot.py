@@ -2,6 +2,7 @@ import os
 import logging
 import random
 import string
+import time
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application,
@@ -34,18 +35,32 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # ======================
+# VARIABLES GLOBALES
+# ======================
+KEYS_DB = {}  # Guardará: { "KEYCODE": fecha_expiracion_timestamp }
+
+# ======================
 # FUNCIONES AUXILIARES
 # ======================
 def generar_key(longitud: int = 16) -> str:
     """Genera una key aleatoria de letras y números."""
     return ''.join(random.choices(string.ascii_uppercase + string.digits, k=longitud))
 
+def formatear_tiempo_restante(expira_en: float) -> str:
+    """Devuelve texto legible del tiempo restante."""
+    segundos = int(expira_en - time.time())
+    if segundos <= 0:
+        return "Expirada"
+    dias = segundos // 86400
+    horas = (segundos % 86400) // 3600
+    minutos = (segundos % 3600) // 60
+    return f"{dias}d {horas}h {minutos}m restantes"
+
 # ======================
 # HANDLERS
 # ======================
-
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("¡Bienvenido! Usa .gen, .genkey, /claim o los comandos disponibles.")
+    await update.message.reply_text("¡Bienvenido! Usa `.gen`, `.genkey`, `.claim` o los comandos disponibles.")
 
 async def gen(update: Update, context: ContextTypes.DEFAULT_TYPE):
     args = update.message.text.split(" ", 1)
@@ -69,23 +84,46 @@ async def genkey(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     args = update.message.text.split()
     if len(args) < 2 or not args[1].isdigit():
-        await update.message.reply_text("❌ Usa el comando correctamente: `.genkey cantidad`")
+        await update.message.reply_text("❌ Usa el comando correctamente: `.genkey días`")
         return
 
-    cantidad = int(args[1])
-    if cantidad < 1:
-        await update.message.reply_text("❌ La cantidad debe ser mayor que 0.")
+    dias = int(args[1])
+    if dias < 1:
+        await update.message.reply_text("❌ Los días deben ser mayor que 0.")
         return
 
-    keys = [generar_key() for _ in range(cantidad)]
+    # Generar una key única con expiración
+    key = generar_key()
+    expira_en = time.time() + dias * 86400
+    KEYS_DB[key] = expira_en
 
-    keyboard = [[InlineKeyboardButton("🔄 Regenerar 10 más", callback_data=f"regenkey|{cantidad}")]]
+    keyboard = [[InlineKeyboardButton("🔄 Regenerar 10 más", callback_data=f"regenkey|{dias}")]]
     reply_markup = InlineKeyboardMarkup(keyboard)
 
-    await update.message.reply_text("✅ Keys generadas:\n" + "\n".join(keys), reply_markup=reply_markup)
+    await update.message.reply_text(
+        f"✅ Key generada:\n{key}\n\n⏳ Expira en {dias} días.",
+        reply_markup=reply_markup
+    )
 
 async def claim(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("✨ Has reclamado tu recompensa.")
+    args = update.message.text.split()
+    if len(args) < 2:
+        await update.message.reply_text("❌ Usa: `.claim KEY`")
+        return
+
+    key = args[1].strip().upper()
+
+    if key not in KEYS_DB:
+        await update.message.reply_text("❌ Key inválida o no existe.")
+        return
+
+    expira_en = KEYS_DB[key]
+    if time.time() > expira_en:
+        await update.message.reply_text("⛔ Esta key ya expiró.")
+        return
+
+    tiempo_restante = formatear_tiempo_restante(expira_en)
+    await update.message.reply_text(f"✨ Key válida. {tiempo_restante}")
 
 async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -106,10 +144,17 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text(results, reply_markup=reply_markup)
 
     elif query.data.startswith("regenkey|"):
-        cantidad = int(query.data.split("|", 1)[1])
-        keys = [generar_key() for _ in range(cantidad)]
-        keyboard = [[InlineKeyboardButton("🔄 Regenerar 10 más", callback_data=f"regenkey|{cantidad}")]]
+        dias = int(query.data.split("|", 1)[1])
+        keys = []
+        for _ in range(10):
+            key = generar_key()
+            expira_en = time.time() + dias * 86400
+            KEYS_DB[key] = expira_en
+            keys.append(f"{key} (⏳ {dias} días)")
+
+        keyboard = [[InlineKeyboardButton("🔄 Regenerar 10 más", callback_data=f"regenkey|{dias}")]]
         reply_markup = InlineKeyboardMarkup(keyboard)
+
         await query.edit_message_text("✅ Keys generadas:\n" + "\n".join(keys), reply_markup=reply_markup)
 
 # ======================
@@ -123,9 +168,10 @@ def main():
     application.add_handler(CommandHandler("claim", claim))
     application.add_handler(CommandHandler("admin", admin))
 
-    # Muy importante: primero .genkey, después .gen
+    # Handlers de mensajes
     application.add_handler(MessageHandler(filters.Regex(r"^\.genkey(?:\s|$)"), genkey))
     application.add_handler(MessageHandler(filters.Regex(r"^\.gen(?:\s|$)"), gen))
+    application.add_handler(MessageHandler(filters.Regex(r"^\.claim(?:\s|$)"), claim))
 
     application.add_handler(CallbackQueryHandler(button_callback))
 
