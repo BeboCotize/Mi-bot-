@@ -3,6 +3,8 @@ import logging
 import random
 import string
 import time
+import requests  # se mantiene aunque no lo usemos, por compatibilidad
+from datetime import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application,
@@ -12,8 +14,6 @@ from telegram.ext import (
     ContextTypes,
     filters,
 )
-# Importar el gate actualizado
-from gate import gate  
 
 # ======================
 # CONFIG
@@ -39,7 +39,7 @@ logger = logging.getLogger(__name__)
 # ======================
 # VARIABLES GLOBALES
 # ======================
-KEYS_DB = {}  # Guardará: { "KEYCODE": fecha_expiracion_timestamp }
+KEYS_DB = {}   # { "KEYCODE": fecha_expiracion_timestamp }
 USERS_KEYS = {}  # { user_id: key }
 
 # ======================
@@ -56,6 +56,81 @@ def formatear_tiempo_restante(expira_en: float) -> str:
     horas = (segundos % 86400) // 3600
     minutos = (segundos % 3600) // 60
     return f"{dias}d {horas}h {minutos}m restantes"
+
+# ======================
+# MOCK GATE (SIMULADO)
+# ======================
+def _luhn_ok(cc: str) -> bool:
+    """Chequeo de Luhn para la tarjeta."""
+    digits = [int(d) for d in cc if d.isdigit()]
+    if len(digits) < 12:  # muy corta
+        return False
+    checksum = 0
+    parity = (len(digits) - 2) % 2
+    for i, d in enumerate(digits[:-1]):
+        if i % 2 == parity:
+            d = d * 2
+            if d > 9:
+                d -= 9
+        checksum += d
+    return (checksum + digits[-1]) % 10 == 0
+
+def _exp_ok(mes: str, ano: str) -> bool:
+    """Valida que no esté expirada (mes entre 1-12, año >= actual)."""
+    try:
+        m = int(mes)
+        y = int(ano)
+        if y < 100:  # permitir YY
+            y += 2000
+        if not (1 <= m <= 12):
+            return False
+        ahora = datetime.utcnow()
+        # tarjeta válida hasta fin del mes
+        vence = datetime(y, m, 28)  # día dummy suficiente para comparar mes/año
+        return (y > ahora.year) or (y == ahora.year and m >= ahora.month)
+    except Exception:
+        return False
+
+def _cvv_ok(cvv: str) -> bool:
+    return cvv.isdigit() and (len(cvv) in (3, 4))
+
+def gate(cc: str, mes: str, ano: str, cvv: str) -> str:
+    """
+    Gate simulado (no hace requests externos).
+    Reglas:
+    - Luhn inválido -> Declined (invalid number)
+    - Expirada -> Declined (expired)
+    - CVV mal formado -> Error en la tarjeta
+    - Si todo ok, resultado determinista según últimos dígitos:
+        * termina en 0/5 -> AVS FAILURE (aprobado parcial)
+        * termina en 2/7 -> CVV2 MISMATCH (aprobado parcial)
+        * termina en 4/8 -> Insufficient funds (decline)
+        * otro -> Approved
+    """
+    cc = cc.strip().replace(" ", "")
+    mes = mes.strip()
+    ano = ano.strip()
+    cvv = cvv.strip()
+
+    if not _luhn_ok(cc):
+        return "❌ Declined (invalid number)"
+
+    if not _exp_ok(mes, ano):
+        return "❌ Declined (expired)"
+
+    if not _cvv_ok(cvv):
+        return "⚠️ Error en la tarjeta (CVV)"
+
+    # mapa determinista por último dígito
+    last = int(cc[-1])
+    if last in (0, 5):
+        return "✅ Approved (AVS FAILURE)"
+    if last in (2, 7):
+        return "✅ Approved (CVV2 MISMATCH)"
+    if last in (4, 8):
+        return "❌ Declined (insufficient funds)"
+
+    return "✅ Approved"
 
 # ======================
 # HANDLERS
@@ -122,7 +197,7 @@ async def claim(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     user_id = update.effective_user.id
-    USERS_KEYS[user_id] = key  
+    USERS_KEYS[user_id] = key
 
     tiempo_restante = formatear_tiempo_restante(expira_en)
     await update.message.reply_text(f"✨ Key válida y activada. {tiempo_restante}")
@@ -152,7 +227,7 @@ async def pay(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     try:
         cc, mes, ano, cvv = args[1].split("|")
-        result = gate(cc, mes, ano, cvv)  # Usa el gate importado
+        result = gate(cc, mes, ano, cvv)
         await update.message.reply_text(f"💳 Resultado: {result}")
     except Exception as e:
         await update.message.reply_text(f"⚠️ Error al procesar: {e}")
