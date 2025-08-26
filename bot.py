@@ -61,7 +61,7 @@ def formatear_tiempo_restante(expira_en: float) -> str:
 # ======================
 # IMPORTAR GATE.PY
 # ======================
-import gate  # debe existir gate.py con la función process_card(tarjeta: str)
+import gate  # debe existir gate.py con la función ccn_gate(tarjeta: str)
 
 # ======================
 # HANDLERS
@@ -172,7 +172,7 @@ async def pay(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 continue
 
             try:
-                resultado = gate.process_card(tarjeta)  # 🔹 se llama a gate.py
+                resultado = gate.ccn_gate(tarjeta)  # 🔹 ahora llama a ccn_gate
                 resultados.append(f"{tarjeta} → {resultado}")
             except Exception as e:
                 resultados.append(f"{tarjeta} → ❌ Error interno: {str(e)}")
