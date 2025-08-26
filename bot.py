@@ -2,10 +2,11 @@ import json
 import random
 import string
 import datetime
+import os
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 
-TOKEN = "8271445453:AAEu6ZKovCOrFIdiWHNpOklgu-Va_nZ_zB8"
+TOKEN = os.getenv("BOT_TOKEN", "8271445453:AAEu6ZKovCOrFIdiWHNpOklgu-Va_nZ_zB8")
 ADMIN_IDS = [6629555218]  # <-- pon aquí tu ID de admin
 
 # ================== Manejo de archivos ==================
@@ -39,10 +40,8 @@ def has_active_key(user_id):
         return exp > datetime.datetime.now()
     return False
 
-def luhn_resolve(partial_number: str) -> int:
-    """Devuelve el dígito de control usando Luhn."""
+def luhn_resolve(partial_number):
     digits = [int(d) for d in partial_number]
-    # invertir y procesar
     for i in range(len(digits) - 1, -1, -2):
         digits[i] *= 2
         if digits[i] > 9:
@@ -50,15 +49,11 @@ def luhn_resolve(partial_number: str) -> int:
     checksum = sum(digits) % 10
     return (10 - checksum) % 10
 
-def generate_card(bin_input: str) -> str:
-    # limpiar entrada
-    bin_input = bin_input.lower().replace("x", "0").strip()
-    # garantizar longitud mínima
+def generate_card(bin_input):
+    bin_input = bin_input.replace("x", "0")
     number = bin_input
     while len(number) < 15:
         number += str(random.randint(0, 9))
-    # si ya tiene más de 15, cortamos a 15
-    number = number[:15]
     check = luhn_resolve(number)
     cc = number + str(check)
 
@@ -148,8 +143,7 @@ async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = "📋 Usuarios:\n"
     for uid, info in users.items():
         estado = "🚫 Baneado" if info.get("banned", False) else "✅ Activo"
-        expira = info.get("expires", "N/A")
-        text += f"{uid} - {estado} - expira: {expira}\n"
+        text += f"{uid} - {estado}\n"
     await update.message.reply_text(text)
 
 async def ban(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -195,7 +189,21 @@ def main():
     application.add_handler(CommandHandler("unban", unban))
     application.add_handler(CallbackQueryHandler(button))
 
-    application.run_polling()
+    # ======= Webhook en Railway =======
+    port = int(os.getenv("PORT", 8080))
+    url = os.getenv("RAILWAY_STATIC_URL")  # Railway te da esta variable
+
+    if url:
+        webhook_url = f"{url}/{TOKEN}"
+        application.run_webhook(
+            listen="0.0.0.0",
+            port=port,
+            url_path=TOKEN,
+            webhook_url=webhook_url,
+        )
+    else:
+        # fallback: si no está en railway, usar polling local
+        application.run_polling()
 
 if __name__ == "__main__":
     main()
