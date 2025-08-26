@@ -1,66 +1,40 @@
 from telegram import Update
 from telegram.ext import ContextTypes
-from db import ban_user, unban_user, set_admin, add_key
-from utils import generate_card
-import secrets, datetime
+from generator import cc_gen  # ✅ Usamos el nuevo generador
 
 
-# --- .gen ---
-async def gen_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not context.args:
-        await update.message.reply_text("Uso: `.gen BINxxxx|MM|YYYY|rnd`")
-        return
-
-    pattern = context.args[0]
-    try:
-        results = generate_card(pattern, amount=10)
-        text = "\n".join(results)
-        await update.message.reply_text(f"✅ Generadas:\n\n{text}")
-    except Exception as e:
-        await update.message.reply_text(f"⚠️ Error: {e}")
-
-
-# --- .ban ---
-async def ban_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not context.args:
-        await update.message.reply_text("Uso: `.ban user_id`")
-        return
-    user_id = int(context.args[0])
-    ban_user(user_id)
-    await update.message.reply_text(f"🚫 Usuario {user_id} baneado.")
-
-
-# --- .unban ---
-async def unban_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not context.args:
-        await update.message.reply_text("Uso: `.unban user_id`")
-        return
-    user_id = int(context.args[0])
-    unban_user(user_id)
-    await update.message.reply_text(f"✅ Usuario {user_id} desbaneado.")
-
-
-# --- .admin ---
-async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not context.args:
-        await update.message.reply_text("Uso: `.admin user_id`")
-        return
-    user_id = int(context.args[0])
-    set_admin(user_id)
-    await update.message.reply_text(f"👑 Usuario {user_id} ahora es administrador.")
-
-
-# --- .genkey ---
-async def genkey_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not context.args:
-        await update.message.reply_text("Uso: `.genkey <días>`")
-        return
-
-    days = int(context.args[0])
-    key = secrets.token_hex(8)
-    expires = datetime.datetime.now() + datetime.timedelta(days=days)
-    add_key(key, expires)
+# --- Comando /start ---
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        f"🔑 Key generada:\n`{key}`\nVence en {days} días.",
-        parse_mode="Markdown"
+        "👋 Bienvenido al bot.\n\n"
+        "👉 Usa `.gen <bin>` para generar tarjetas.\n"
+        "Ejemplo: `.gen 4539xxxxxxxxxxxx`\n\n"
+        "También puedes añadir mes, año y cvv:\n"
+        "`.gen 4539xxxxxxxxxxxx 05 2028 123`"
     )
+
+
+# --- Comando .gen ---
+async def gen(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        args = context.args  # Leer argumentos
+        if not args:
+            await update.message.reply_text(
+                "⚠️ Usa el formato:\n`.gen <bin>`\nEjemplo: `.gen 4539xxxxxxxxxxxx`",
+                parse_mode="Markdown"
+            )
+            return
+
+        bin_format = args[0]
+        mes = args[1] if len(args) > 1 else "xx"
+        ano = args[2] if len(args) > 2 else "xxxx"
+        cvv = args[3] if len(args) > 3 else "rnd"
+
+        # Generar tarjetas
+        cards = cc_gen(bin_format, mes, ano, cvv)
+        text = "".join(cards)
+
+        await update.message.reply_text(f"✅ Generadas:\n\n{text}")
+
+    except Exception as e:
+        await update.message.reply_text(f"❌ Error en el generador: {e}")
