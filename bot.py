@@ -3,7 +3,7 @@ import logging
 import random
 import string
 import time
-import requests  # se mantiene aunque no lo usemos, por compatibilidad
+import requests
 import re
 from datetime import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
@@ -25,7 +25,7 @@ PORT = int(os.environ.get("PORT", 8443))
 # Admins
 ADMINS = [6629555218]  # <-- pon aquí tus IDs de admin
 
-# Dominio público (puedes setear en ENV como WEBHOOK_URL)
+# Dominio público
 WEBHOOK_URL = os.getenv("WEBHOOK_URL") or f"https://mi-bot-bottoken.up.railway.app/{TOKEN}"
 
 # ======================
@@ -61,7 +61,7 @@ def formatear_tiempo_restante(expira_en: float) -> str:
 # ======================
 # IMPORTAR GATE.PY
 # ======================
-import gate  # debe existir gate.py con la función ccn_gate(tarjeta: str)
+import gate  # debe existir gate.py con la función process_card(tarjeta: str)
 
 # ======================
 # HANDLERS
@@ -141,13 +141,11 @@ async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("✅ Bienvenido admin, puedes usar los comandos especiales.")
 
 # ===============================
-# 🔹 Nuevo comando .pay adaptado al gate.py
+# 🔹 Comando .pay
 # ===============================
 async def pay(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         user_id = update.effective_user.id
-
-        # ✅ Verificar si el usuario tiene una key válida
         if user_id not in USERS_KEYS or USERS_KEYS[user_id] not in KEYS_DB:
             await update.message.reply_text("⛔ Necesitas reclamar una key válida con `.claim` antes de usar este comando.")
             return
@@ -161,7 +159,7 @@ async def pay(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("⚠️ Uso correcto: `.pay CC|MM|YYYY|CVV`")
             return
 
-        tarjetas = context.args  # permite varias tarjetas separadas por espacio
+        tarjetas = context.args
         resultados = []
 
         regex_cc = re.compile(r"^(\d{15,16})\|((0[1-9])|(1[0-2]))\|(\d{4})\|(\d{3,4})$")
@@ -172,7 +170,7 @@ async def pay(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 continue
 
             try:
-                resultado = gate.ccn_gate(tarjeta)  # 🔹 ahora llama a ccn_gate
+                resultado = gate.process_card(tarjeta)
                 resultados.append(f"{tarjeta} → {resultado}")
             except Exception as e:
                 resultados.append(f"{tarjeta} → ❌ Error interno: {str(e)}")
@@ -181,6 +179,77 @@ async def pay(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     except Exception as e:
         await update.message.reply_text(f"❌ Error en .pay: {str(e)}")
+
+# ===============================
+# 🔹 Comando .pya detallado
+# ===============================
+async def pya(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        user_id = update.effective_user.id
+        if user_id not in USERS_KEYS or USERS_KEYS[user_id] not in KEYS_DB:
+            await update.message.reply_text("⛔ Necesitas reclamar una key válida con `.claim` antes de usar este comando.")
+            return
+
+        expira_en = KEYS_DB[USERS_KEYS[user_id]]
+        if time.time() > expira_en:
+            await update.message.reply_text("⛔ Tu key ya expiró.")
+            return
+
+        if not context.args:
+            await update.message.reply_text("⚠️ Uso correcto: `.pya CC|MM|YYYY|CVV`")
+            return
+
+        tarjeta = context.args[0]
+        msg = await update.message.reply_text("⏳ Procesando, espere...")
+
+        inicio = time.time()
+        try:
+            resultado = gate.process_card(tarjeta)
+        except Exception as e:
+            await msg.edit_text(f"❌ Error interno en el gate: {str(e)}")
+            return
+        fin = time.time()
+        duracion = round(fin - inicio, 2)
+
+        # BIN lookup
+        bin_number = tarjeta.split("|")[0][:6]
+        bank_info = {}
+        try:
+            r = requests.get(f"https://lookup.binlist.net/{bin_number}", timeout=10)
+            if r.status_code == 200:
+                data = r.json()
+                bank_info["scheme"] = data.get("scheme", "N/A").upper()
+                bank_info["type"] = data.get("type", "N/A").upper()
+                bank_info["brand"] = data.get("brand", "N/A").upper()
+                bank_info["bank"] = data.get("bank", {}).get("name", "N/A")
+                bank_info["country"] = data.get("country", {}).get("name", "N/A")
+                bank_info["emoji"] = data.get("country", {}).get("emoji", "🏳️")
+            else:
+                bank_info = {"scheme": "N/A", "type": "N/A", "brand": "N/A", "bank": "N/A", "country": "N/A", "emoji": "🏳️"}
+        except:
+            bank_info = {"scheme": "N/A", "type": "N/A", "brand": "N/A", "bank": "N/A", "country": "N/A", "emoji": "🏳️"}
+
+        status = "✅ APPROVED" if "APPROVED" in resultado.upper() else "❎ DECLINED"
+
+        respuesta = f"""
+点 ***CARD*** **--»** `{tarjeta}`
+━━━━━━━━━━━━━━
+点 ***STATUS*** **--»** {status}
+✅ 点 ***MESSAGE*** **--»** {resultado}
+═════[BANK DETAILS]═════
+点 ***BIN*** **--»** {bank_info['scheme']} {bank_info['brand']} {bank_info['type']}
+点 ***BANK*** **--»** {bank_info['bank']}
+点 ***COUNTRY*** **--»** {bank_info['country']} {bank_info['emoji']}
+═════[INFO]═════
+点 ***TIME*** {duracion} Segs | Reintentos 1
+点 ***CHECKED BY*** @{update.effective_user.username or 'USER'}
+━━━━━━━━━━━━━━
+点 ***BOT*** 🤖
+"""
+        await msg.edit_text(respuesta, parse_mode="Markdown")
+
+    except Exception as e:
+        await update.message.reply_text(f"❌ Error en .pya: {str(e)}")
 
 # ===============================
 # CALLBACKS
@@ -220,7 +289,8 @@ def main():
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("claim", claim))
     application.add_handler(CommandHandler("admin", admin))
-    application.add_handler(CommandHandler("pay", pay))   # ✅ cambiado a CommandHandler
+    application.add_handler(CommandHandler("pay", pay))
+    application.add_handler(CommandHandler("pya", pya))  # ✅ Nuevo comando agregado
 
     # Handlers de mensajes
     application.add_handler(MessageHandler(filters.Regex(r"^\.genkey(?:\s|$)"), genkey))
