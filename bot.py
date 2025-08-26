@@ -4,6 +4,7 @@ import random
 import string
 import time
 import requests  # se mantiene aunque no lo usemos, por compatibilidad
+import re
 from datetime import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
@@ -163,7 +164,13 @@ async def pay(update: Update, context: ContextTypes.DEFAULT_TYPE):
         tarjetas = context.args  # permite varias tarjetas separadas por espacio
         resultados = []
 
+        regex_cc = re.compile(r"^(\d{15,16})\|((0[1-9])|(1[0-2]))\|(\d{4})\|(\d{3,4})$")
+
         for tarjeta in tarjetas:
+            if not regex_cc.match(tarjeta):
+                resultados.append(f"{tarjeta} → ⚠️ Formato inválido. Usa CC|MM|YYYY|CVV")
+                continue
+
             try:
                 resultado = gate.process_card(tarjeta)  # 🔹 se llama a gate.py
                 resultados.append(f"{tarjeta} → {resultado}")
