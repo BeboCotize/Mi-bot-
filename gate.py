@@ -62,10 +62,7 @@ def ccn_gate(card):
             email = usuario()['email']  
             phone = usuario()['phone']  
 
-            #============[Request simulation]============#
-            # ... Aquí van tus requests reales como ya lo tienes en tu gate ...
-
-            # Para demo, inventamos un response simulado
+            #============[Simulación de response]============#
             result_json = {
                 "paymentresponse": '{"message":"CVV2 MISMATCH","code":"0000N7"}'
             }
@@ -78,24 +75,32 @@ def ccn_gate(card):
             # Obtener BIN info
             bin_info = get_bin_info(cc_number[:6])
 
-            #=========== JSON RESPONSE ===========#
-            return {
-                "card": card,
-                "status": "APPROVED" if "approved" in (message_text or "").lower() or "CVV2 MISMATCH" in (message_text or "") else "DECLINED",
-                "message": message_text,
-                "code": message_code,
-                "bin": bin_info["bin"],
-                "bank": bin_info["bank"],
-                "country": bin_info["country"],
-                "time": f"{elapsed} Segs",
-                "retries": retry_count + 1
-            }
+            #=========== FORMATO BONITO ===========#
+            status = "✅ Aprobada" if "CVV2 MISMATCH" in (message_text or "") else "❌ Rechazada"
+
+            mensaje = f"""
+💳 𝗥𝗘𝗦𝗨𝗟𝗧𝗔𝗗𝗢 𝗖𝗔𝗥𝗗
+
+• 𝗧𝗮𝗿𝗷𝗲𝘁𝗮: `{card}`
+• 𝗘𝘀𝘁𝗮𝗱𝗼: {status}
+• 𝗠𝗲𝗻𝘀𝗮𝗷𝗲: {message_text}
+• 𝗖𝗼́𝗱𝗶𝗴𝗼: {message_code}
+
+🏦 𝗕𝗔𝗡𝗖𝗢 𝗬 𝗣𝗔Í𝗦
+• BIN: {bin_info["bin"]}
+• Banco: {bin_info["bank"]}
+• País: {bin_info["country"]}
+
+⏱ 𝗧𝗶𝗲𝗺𝗽𝗼: {elapsed} Segs
+🔁 Reintentos: {retry_count+1}
+"""
+            return mensaje.strip()
 
         except Exception as e:  
             print(e)  
             retry_count += 1  
     else:  
-        return {"card": card, "status": "ERROR", "resp":  f"Retries: {retry_count}"}
+        return f"❌ Error con {card} (retries={retry_count})"
 
 if __name__ == "__main__":
     file = open('cards.txt', 'r')
@@ -103,7 +108,7 @@ if __name__ == "__main__":
     for position, x in enumerate(lines):
         cc, mes, ano, cvv = x.split("|")
         gateway = ccn_gate(f"{cc}|{mes}|{ano}|{cvv.strip()}")
-        print(gateway)  # <-- imprime JSON con BIN info
+        print(gateway)  # <-- ahora imprime el mensaje bonito
         with open('cards.txt', "w")as f:
             f.writelines(lines[position+1:])
             f.close()
