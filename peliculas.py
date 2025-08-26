@@ -22,4 +22,4 @@ async def peliculas_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
     elif query.data == "terror":
         await query.edit_message_text("😱 Recomendación de Terror: El Conjuro")
     elif query.data == "romance":
-        await query.edit_message_text("❤️ Recomendación de Romance: Titanic")
+        await query.edit_message_text("❤️ Recomendación de Romance: Titanic") 
