@@ -3,7 +3,7 @@ import logging
 import random
 import string
 import time
-import requests
+import requests  # se mantiene aunque no lo usemos, por compatibilidad
 import re
 from datetime import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
@@ -22,10 +22,15 @@ from telegram.ext import (
 TOKEN = os.getenv("BOT_TOKEN")
 PORT = int(os.environ.get("PORT", 8443))
 
-ADMINS = [6629555218]
+# Admins
+ADMINS = [6629555218]  # <-- pon aquí tus IDs de admin
 
+# Dominio público (puedes setear en ENV como WEBHOOK_URL)
 WEBHOOK_URL = os.getenv("WEBHOOK_URL") or f"https://mi-bot-bottoken.up.railway.app/{TOKEN}"
 
+# ======================
+# LOGGING
+# ======================
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     level=logging.INFO
@@ -35,8 +40,8 @@ logger = logging.getLogger(__name__)
 # ======================
 # VARIABLES GLOBALES
 # ======================
-KEYS_DB = {}
-USERS_KEYS = {}
+KEYS_DB = {}   # { "KEYCODE": fecha_expiracion_timestamp }
+USERS_KEYS = {}  # { user_id: key }
 
 # ======================
 # FUNCIONES AUXILIARES
@@ -54,35 +59,9 @@ def formatear_tiempo_restante(expira_en: float) -> str:
     return f"{dias}d {horas}h {minutos}m restantes"
 
 # ======================
-# IMPORTAR GATE
+# IMPORTAR GATE.PY
 # ======================
-import gate  # asegúrate que gate.py tenga ccn_gate()
-
-# ======================
-# BINLIST API
-# ======================
-def get_bin_info(card_number: str):
-    bin_number = card_number[:6]
-    url = f"https://binlist.io/lookup/{bin_number}"
-    try:
-        r = requests.get(url, timeout=5)
-        data = r.json()
-
-        scheme = data.get("scheme", "").upper()
-        tipo = data.get("type", "").upper()
-        brand = f"{scheme} {tipo}".strip() if scheme or tipo else "N/A"
-
-        banco = data.get("bank", {}).get("name", "N/A")
-        country = data.get("country", {}).get("name", "N/A")
-        flag = data.get("country", {}).get("emoji", "")
-
-        return {
-            "bin": brand,
-            "bank": banco,
-            "country": f"{country} {flag}".strip()
-        }
-    except Exception:
-        return {"bin": "N/A", "bank": "N/A", "country": "N/A"}
+import gate  # debe existir gate.py con la función ccn_gate(tarjeta: str)
 
 # ======================
 # HANDLERS
@@ -161,13 +140,14 @@ async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     await update.message.reply_text("✅ Bienvenido admin, puedes usar los comandos especiales.")
 
-# ======================
-# PAY HANDLER (sirve para /pay y .pay)
-# ======================
+# ===============================
+# 🔹 Nuevo comando .pay adaptado al gate.py
+# ===============================
 async def pay(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         user_id = update.effective_user.id
 
+        # ✅ Verificar si el usuario tiene una key válida
         if user_id not in USERS_KEYS or USERS_KEYS[user_id] not in KEYS_DB:
             await update.message.reply_text("⛔ Necesitas reclamar una key válida con `.claim` antes de usar este comando.")
             return
@@ -181,62 +161,30 @@ async def pay(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("⚠️ Uso correcto: `.pay CC|MM|YYYY|CVV`")
             return
 
-        tarjeta = context.args[0]
+        tarjetas = context.args  # permite varias tarjetas separadas por espacio
+        resultados = []
+
         regex_cc = re.compile(r"^(\d{15,16})\|((0[1-9])|(1[0-2]))\|(\d{4})\|(\d{3,4})$")
-        if not regex_cc.match(tarjeta):
-            await update.message.reply_text(f"{tarjeta} → ⚠️ Formato inválido. Usa CC|MM|YYYY|CVV")
-            return
 
-        procesando_msg = await update.message.reply_text("⏳ Procesando, espera...")
+        for tarjeta in tarjetas:
+            if not regex_cc.match(tarjeta):
+                resultados.append(f"{tarjeta} → ⚠️ Formato inválido. Usa CC|MM|YYYY|CVV")
+                continue
 
-        try:
-            resultado_raw = gate.ccn_gate(tarjeta)
+            try:
+                resultado = gate.ccn_gate(tarjeta)  # 🔹 ahora llama a ccn_gate
+                resultados.append(f"{tarjeta} → {resultado}")
+            except Exception as e:
+                resultados.append(f"{tarjeta} → ❌ Error interno: {str(e)}")
 
-            # 🔹 Normalizamos el resultado a diccionario
-            if isinstance(resultado_raw, str):
-                partes = resultado_raw.split("|")
-                resultado = {
-                    "status": partes[0] if len(partes) > 0 else "N/A",
-                    "message": partes[1] if len(partes) > 1 else "N/A",
-                    "code": partes[2] if len(partes) > 2 else "N/A",
-                    "time": partes[3] if len(partes) > 3 else "0.00 Segs",
-                    "tries": 1
-                }
-            else:
-                resultado = resultado_raw
-
-            # Obtener info del BIN
-            bin_info = get_bin_info(tarjeta.replace("|", ""))
-
-            estado = "✅ Aprobada" if str(resultado.get("status", "")).lower() == "aprobada" else "❌ Declined"
-
-            texto = f"""
-💳 𝗥𝗘𝗦𝗨𝗟𝗧𝗔𝗗𝗢 𝗖𝗔𝗥𝗗
-
-• 𝗧𝗮𝗿𝗷𝗲𝘁𝗮: {tarjeta}
-• 𝗘𝘀𝘁𝗮𝗱𝗼: {estado}
-• 𝗠𝗲𝗻𝘀𝗮𝗷𝗲: {resultado.get("message", "N/A")}
-• 𝗖𝗼́𝗱𝗶𝗴𝗼: {resultado.get("code", "N/A")}
-
-🏦 𝗕𝗔𝗡𝗖𝗢 𝗬 𝗣𝗔Í𝗦
-• BIN: {bin_info['bin']}
-• Banco: {bin_info['bank']}
-• País: {bin_info['country']}
-
-⏱ 𝗧𝗶𝗲𝗺𝗽𝗼: {resultado.get("time", "0.00 Segs")}
-🔁 Reintentos: {resultado.get("tries", 1)}
-"""
-            await procesando_msg.edit_text(texto.strip())
-
-        except Exception as e:
-            await procesando_msg.edit_text(f"❌ Error interno: {str(e)}")
+        await update.message.reply_text("\n".join(resultados))
 
     except Exception as e:
         await update.message.reply_text(f"❌ Error en .pay: {str(e)}")
 
-# ======================
+# ===============================
 # CALLBACKS
-# ======================
+# ===============================
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -268,18 +216,20 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     application = Application.builder().token(TOKEN).build()
 
+    # Handlers
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("claim", claim))
     application.add_handler(CommandHandler("admin", admin))
-    application.add_handler(CommandHandler("pay", pay))  # /pay
-    application.add_handler(MessageHandler(filters.Regex(r"^\.pay(?:\s|$)"), pay))  # .pay
+    application.add_handler(CommandHandler("pay", pay))   # ✅ cambiado a CommandHandler
 
+    # Handlers de mensajes
     application.add_handler(MessageHandler(filters.Regex(r"^\.genkey(?:\s|$)"), genkey))
     application.add_handler(MessageHandler(filters.Regex(r"^\.gen(?:\s|$)"), gen))
     application.add_handler(MessageHandler(filters.Regex(r"^\.claim(?:\s|$)"), claim))
 
     application.add_handler(CallbackQueryHandler(button_callback))
 
+    # Webhook config para Railway
     application.run_webhook(
         listen="0.0.0.0",
         port=PORT,
