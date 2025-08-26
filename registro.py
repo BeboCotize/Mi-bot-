@@ -7,7 +7,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     registrar_usuario(user.id, user.username or "Desconocido")
     await update.message.reply_text(
         f"👋 Bienvenido {user.first_name}!\n\n"
-        "Para comenzar, usa `.registrar` o `/registrar`."
+        "Para comenzar, usa /registrar."
     )
 
 async def registrar(update: Update, context: ContextTypes.DEFAULT_TYPE):
