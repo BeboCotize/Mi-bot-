@@ -5,3 +5,4 @@ sqlalchemy>=2.0.0,<3.0.0
 requests
 faker
 curl_cffi
+colorama
