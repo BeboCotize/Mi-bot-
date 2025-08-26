@@ -250,9 +250,6 @@ def main():
     application.add_handler(CommandHandler("admin", admin))
     application.add_handler(CommandHandler("pay", pay))   # ✅ .pay agregado
 
-    # Alias .pya para .pay
-    application.add_handler(MessageHandler(filters.Regex(r"^\.pya(?:\s|$)"), pay))
-
     # Handlers de mensajes
     application.add_handler(MessageHandler(filters.Regex(r"^\.genkey(?:\s|$)"), genkey))
     application.add_handler(MessageHandler(filters.Regex(r"^\.gen(?:\s|$)"), gen))
