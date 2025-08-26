@@ -27,6 +27,30 @@ def capture(data, start, end):
     except ValueError:
         return None
 
+def bin_lookup(bin_number: str) -> dict:
+    """Consulta info del BIN en vivo usando binlist.net"""
+    try:
+        resp = requests.get(f"https://lookup.binlist.net/{bin_number[:6]}", headers={"Accept-Version": "3"})
+        if resp.status_code == 200:
+            data = resp.json()
+            bank = data.get("bank", {}).get("name", "Unknown Bank")
+            country = data.get("country", {}).get("name", "Unknown Country")
+            emoji = data.get("country", {}).get("emoji", "")
+            scheme = data.get("scheme", "").upper()
+            brand = data.get("brand", "")
+            return {
+                "bin": f"{scheme} {brand}".strip(),
+                "bank": bank,
+                "country": f"{country} {emoji}".strip()
+            }
+    except Exception:
+        pass
+    return {
+        "bin": "Unknown",
+        "bank": "Unknown",
+        "country": "Unknown 🌍"
+    }
+
 def ccn_gate(card: str) -> dict:
     """ 
     Recibe una tarjeta en formato cc|mes|año|cvv 
@@ -91,20 +115,24 @@ def ccn_gate(card: str) -> dict:
             message_text = capture(result.text, '"message":"', '"')
             message_code = capture(result.text, '"code":"', '"')
 
+            # Determinar estado
             status = "DECLINED"
-            if message_text and ("CVV2 MISMATCH" in message_text or "AVS FAILURE" in message_text):
+            if message_text and ("APPROVED" in message_text or "SUCCESS" in message_text):
                 status = "APPROVED"
 
             fin = time.time()
             tiempo = round(fin - inicio, 2)
 
+            # Obtener datos reales del BIN
+            bin_data = bin_lookup(cc_number)
+
             return {
                 "card": f"{cc_number}|{mes}|{ano_number}|{cvv}",
                 "status": status,
-                "message": f"{message_text} | {message_code}" if message_text else "No response",
-                "bin": "VISA CLASSIC DEBIT",
-                "bank": "BANCO LAFISE BANCENTRO, S.A.",
-                "country": "NICARAGUA 🇳🇮",
+                "message": f"{message_text} | CODE: {message_code}" if message_text else "No response | CODE: N/A",
+                "bin": bin_data["bin"],
+                "bank": bin_data["bank"],
+                "country": bin_data["country"],
                 "time": tiempo,
                 "retries": retry_count + 1,
                 "checked_by": "@colale1"
@@ -120,7 +148,7 @@ def ccn_gate(card: str) -> dict:
                     "message": f"Retries: {retry_count} | Error: {str(e)}",
                     "bin": "Unknown",
                     "bank": "Unknown",
-                    "country": "Unknown",
+                    "country": "Unknown 🌍",
                     "time": round(fin - inicio, 2),
                     "retries": retry_count,
                     "checked_by": "@colale1"
