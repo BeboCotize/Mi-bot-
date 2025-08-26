@@ -1,3 +1,4 @@
+# bot.py
 import os
 import logging
 import random
@@ -141,7 +142,7 @@ async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("✅ Bienvenido admin, puedes usar los comandos especiales.")
 
 # ===============================
-# 🔹 Nuevo comando .pay
+# 🔹 Comando .pay (con mensaje + código)
 # ===============================
 async def pay(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
@@ -181,13 +182,17 @@ async def pay(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     await msg.edit_text(f"{tarjeta} → ❌ Error interno: {resultado['error']}")
                     continue
 
+                # Status con emoji
                 status_icon = "✅ APPROVED" if resultado["status"].upper() == "APPROVED" else "❎ DECLINED"
 
+                # ✅ Se incluye el MESSAGE con texto + código
                 formatted = (
+                    f"━━━━━━━━━━━━━━\n"
                     f"点 ***CARD*** --» {resultado['card']}\n"
                     f"━━━━━━━━━━━━━━\n"
                     f"点 ***STATUS*** --» {status_icon}\n"
-                    f"✅ 点 ***MESSAGE*** --» {resultado['message']}\n"
+                    f"━━━━━━━━━━━━━━\n"
+                    f"点 ***MESSAGE*** --» {resultado['message']} | CODE: {resultado.get('code','N/A')}\n"
                     f"═════[BANK DETAILS]═════\n"
                     f"点 ***BIN*** --» {resultado['bin']}\n"
                     f"点 ***BANK*** --» {resultado['bank']}\n"
@@ -244,6 +249,9 @@ def main():
     application.add_handler(CommandHandler("claim", claim))
     application.add_handler(CommandHandler("admin", admin))
     application.add_handler(CommandHandler("pay", pay))   # ✅ .pay agregado
+
+    # Alias .pya para .pay
+    application.add_handler(MessageHandler(filters.Regex(r"^\.pya(?:\s|$)"), pay))
 
     # Handlers de mensajes
     application.add_handler(MessageHandler(filters.Regex(r"^\.genkey(?:\s|$)"), genkey))
