@@ -220,12 +220,12 @@ def main():
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("claim", claim))
     application.add_handler(CommandHandler("admin", admin))
+    application.add_handler(CommandHandler("pay", pay))   # ✅ cambiado a CommandHandler
 
     # Handlers de mensajes
     application.add_handler(MessageHandler(filters.Regex(r"^\.genkey(?:\s|$)"), genkey))
     application.add_handler(MessageHandler(filters.Regex(r"^\.gen(?:\s|$)"), gen))
     application.add_handler(MessageHandler(filters.Regex(r"^\.claim(?:\s|$)"), claim))
-    application.add_handler(MessageHandler(filters.Regex(r"^\.pay(?:\s|$)"), pay))
 
     application.add_handler(CallbackQueryHandler(button_callback))
 
