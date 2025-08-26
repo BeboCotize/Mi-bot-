@@ -162,7 +162,7 @@ async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("✅ Bienvenido admin, puedes usar los comandos especiales.")
 
 # ======================
-# .pay con formato bonito y BIN
+# PAY HANDLER (sirve para /pay y .pay)
 # ======================
 async def pay(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
@@ -177,11 +177,17 @@ async def pay(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("⛔ Tu key ya expiró.")
             return
 
-        if not context.args:
+        text_input = update.message.text.strip()
+        if text_input.startswith(".pay"):
+            args = text_input.replace(".pay", "").strip().split()
+        else:
+            args = context.args
+
+        if not args:
             await update.message.reply_text("⚠️ Uso correcto: `.pay CC|MM|YYYY|CVV`")
             return
 
-        tarjeta = context.args[0]
+        tarjeta = args[0]
         regex_cc = re.compile(r"^(\d{15,16})\|((0[1-9])|(1[0-2]))\|(\d{4})\|(\d{3,4})$")
         if not regex_cc.match(tarjeta):
             await update.message.reply_text(f"{tarjeta} → ⚠️ Formato inválido. Usa CC|MM|YYYY|CVV")
@@ -256,8 +262,8 @@ def main():
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("claim", claim))
     application.add_handler(CommandHandler("admin", admin))
-    application.add_handler(CommandHandler("pay", pay))
-    application.add_handler(CommandHandler(".pay", pay))  # alias .pay
+    application.add_handler(CommandHandler("pay", pay))  # /pay
+    application.add_handler(MessageHandler(filters.Regex(r"^\.pay(?:\s|$)"), pay))  # .pay
 
     application.add_handler(MessageHandler(filters.Regex(r"^\.genkey(?:\s|$)"), genkey))
     application.add_handler(MessageHandler(filters.Regex(r"^\.gen(?:\s|$)"), gen))
