@@ -1,7 +1,7 @@
 import random
 from faker import Faker
 from random import choice
-from captcha_bypass import *
+#from captcha_bypass import *
 from curl_cffi import requests
 from colorama import init, Fore
 from fake_useragent import UserAgent
