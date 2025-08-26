@@ -58,79 +58,9 @@ def formatear_tiempo_restante(expira_en: float) -> str:
     return f"{dias}d {horas}h {minutos}m restantes"
 
 # ======================
-# MOCK GATE (SIMULADO)
+# IMPORTAR GATE.PY
 # ======================
-def _luhn_ok(cc: str) -> bool:
-    """Chequeo de Luhn para la tarjeta."""
-    digits = [int(d) for d in cc if d.isdigit()]
-    if len(digits) < 12:  # muy corta
-        return False
-    checksum = 0
-    parity = (len(digits) - 2) % 2
-    for i, d in enumerate(digits[:-1]):
-        if i % 2 == parity:
-            d = d * 2
-            if d > 9:
-                d -= 9
-        checksum += d
-    return (checksum + digits[-1]) % 10 == 0
-
-def _exp_ok(mes: str, ano: str) -> bool:
-    """Valida que no esté expirada (mes entre 1-12, año >= actual)."""
-    try:
-        m = int(mes)
-        y = int(ano)
-        if y < 100:  # permitir YY
-            y += 2000
-        if not (1 <= m <= 12):
-            return False
-        ahora = datetime.utcnow()
-        # tarjeta válida hasta fin del mes
-        vence = datetime(y, m, 28)  # día dummy suficiente para comparar mes/año
-        return (y > ahora.year) or (y == ahora.year and m >= ahora.month)
-    except Exception:
-        return False
-
-def _cvv_ok(cvv: str) -> bool:
-    return cvv.isdigit() and (len(cvv) in (3, 4))
-
-def gate(cc: str, mes: str, ano: str, cvv: str) -> str:
-    """
-    Gate simulado (no hace requests externos).
-    Reglas:
-    - Luhn inválido -> Declined (invalid number)
-    - Expirada -> Declined (expired)
-    - CVV mal formado -> Error en la tarjeta
-    - Si todo ok, resultado determinista según últimos dígitos:
-        * termina en 0/5 -> AVS FAILURE (aprobado parcial)
-        * termina en 2/7 -> CVV2 MISMATCH (aprobado parcial)
-        * termina en 4/8 -> Insufficient funds (decline)
-        * otro -> Approved
-    """
-    cc = cc.strip().replace(" ", "")
-    mes = mes.strip()
-    ano = ano.strip()
-    cvv = cvv.strip()
-
-    if not _luhn_ok(cc):
-        return "❌ Declined (invalid number)"
-
-    if not _exp_ok(mes, ano):
-        return "❌ Declined (expired)"
-
-    if not _cvv_ok(cvv):
-        return "⚠️ Error en la tarjeta (CVV)"
-
-    # mapa determinista por último dígito
-    last = int(cc[-1])
-    if last in (0, 5):
-        return "✅ Approved (AVS FAILURE)"
-    if last in (2, 7):
-        return "✅ Approved (CVV2 MISMATCH)"
-    if last in (4, 8):
-        return "❌ Declined (insufficient funds)"
-
-    return "✅ Approved"
+import gate  # debe existir gate.py con la función process_card(tarjeta: str)
 
 # ======================
 # HANDLERS
@@ -209,29 +139,45 @@ async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     await update.message.reply_text("✅ Bienvenido admin, puedes usar los comandos especiales.")
 
+# ===============================
+# 🔹 Nuevo comando .pay adaptado al gate.py
+# ===============================
 async def pay(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if user_id not in USERS_KEYS or USERS_KEYS[user_id] not in KEYS_DB:
-        await update.message.reply_text("⛔ Necesitas reclamar una key válida con `.claim`.")
-        return
-
-    expira_en = KEYS_DB[USERS_KEYS[user_id]]
-    if time.time() > expira_en:
-        await update.message.reply_text("⛔ Tu key ya expiró.")
-        return
-
-    args = update.message.text.split()
-    if len(args) != 2 or "|" not in args[1]:
-        await update.message.reply_text("❌ Usa: `.pay CC|MM|YYYY|CVV`")
-        return
-
     try:
-        cc, mes, ano, cvv = args[1].split("|")
-        result = gate(cc, mes, ano, cvv)
-        await update.message.reply_text(f"💳 Resultado: {result}")
-    except Exception as e:
-        await update.message.reply_text(f"⚠️ Error al procesar: {e}")
+        user_id = update.effective_user.id
 
+        # ✅ Verificar si el usuario tiene una key válida
+        if user_id not in USERS_KEYS or USERS_KEYS[user_id] not in KEYS_DB:
+            await update.message.reply_text("⛔ Necesitas reclamar una key válida con `.claim` antes de usar este comando.")
+            return
+
+        expira_en = KEYS_DB[USERS_KEYS[user_id]]
+        if time.time() > expira_en:
+            await update.message.reply_text("⛔ Tu key ya expiró.")
+            return
+
+        if not context.args:
+            await update.message.reply_text("⚠️ Uso correcto: `.pay CC|MM|YYYY|CVV`")
+            return
+
+        tarjetas = context.args  # Permite varias tarjetas separadas por espacio
+        resultados = []
+
+        for tarjeta in tarjetas:
+            try:
+                resultado = gate.process_card(tarjeta)  # 🔹 se llama a gate.py
+                resultados.append(f"{tarjeta} → {resultado}")
+            except Exception as e:
+                resultados.append(f"{tarjeta} → ❌ Error interno: {str(e)}")
+
+        await update.message.reply_text("\n".join(resultados))
+
+    except Exception as e:
+        await update.message.reply_text(f"❌ Error en .pay: {str(e)}")
+
+# ===============================
+# CALLBACKS
+# ===============================
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
