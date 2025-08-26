@@ -177,17 +177,11 @@ async def pay(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("⛔ Tu key ya expiró.")
             return
 
-        text_input = update.message.text.strip()
-        if text_input.startswith(".pay"):
-            args = text_input.replace(".pay", "").strip().split()
-        else:
-            args = context.args
-
-        if not args:
+        if not context.args:
             await update.message.reply_text("⚠️ Uso correcto: `.pay CC|MM|YYYY|CVV`")
             return
 
-        tarjeta = args[0]
+        tarjeta = context.args[0]
         regex_cc = re.compile(r"^(\d{15,16})\|((0[1-9])|(1[0-2]))\|(\d{4})\|(\d{3,4})$")
         if not regex_cc.match(tarjeta):
             await update.message.reply_text(f"{tarjeta} → ⚠️ Formato inválido. Usa CC|MM|YYYY|CVV")
@@ -196,10 +190,25 @@ async def pay(update: Update, context: ContextTypes.DEFAULT_TYPE):
         procesando_msg = await update.message.reply_text("⏳ Procesando, espera...")
 
         try:
-            resultado = gate.ccn_gate(tarjeta)
+            resultado_raw = gate.ccn_gate(tarjeta)
+
+            # 🔹 Normalizamos el resultado a diccionario
+            if isinstance(resultado_raw, str):
+                partes = resultado_raw.split("|")
+                resultado = {
+                    "status": partes[0] if len(partes) > 0 else "N/A",
+                    "message": partes[1] if len(partes) > 1 else "N/A",
+                    "code": partes[2] if len(partes) > 2 else "N/A",
+                    "time": partes[3] if len(partes) > 3 else "0.00 Segs",
+                    "tries": 1
+                }
+            else:
+                resultado = resultado_raw
+
+            # Obtener info del BIN
             bin_info = get_bin_info(tarjeta.replace("|", ""))
 
-            estado = "✅ Aprobada" if resultado["status"].lower() == "aprobada" else "❌ Declined"
+            estado = "✅ Aprobada" if str(resultado.get("status", "")).lower() == "aprobada" else "❌ Declined"
 
             texto = f"""
 💳 𝗥𝗘𝗦𝗨𝗟𝗧𝗔𝗗𝗢 𝗖𝗔𝗥𝗗
