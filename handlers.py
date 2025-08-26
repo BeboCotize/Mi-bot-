@@ -1,68 +1,81 @@
 import requests
 from generator import cc_gen
+from telegram import Update
+from telegram.ext import ContextTypes
 
-async def gen(update, context):
+# ─────────────────────────────
+#   📌 Comando: /start
+# ─────────────────────────────
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("🇩🇴 Bienvenido! Usa /gen <bin> para generar tarjetas.")
+
+# ─────────────────────────────
+#   📌 Comando: /gen
+# ─────────────────────────────
+async def gen(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
-        args = update.message.text.split(" ", 1)
-        if len(args) < 2:
-            await update.message.reply_text("❌ Uso correcto: /gen <bin>")
+        # Validación de argumentos
+        if not context.args:
+            await update.message.reply_text("❌ Uso correcto: /gen <BIN>")
             return
 
-        bin_input = args[1]
+        bin_code = context.args[0]
 
-        # 🔍 Lookup del BIN con tu API
-        binsito = ["", "", "", "", "", "", ""]
-        try:
-            res = requests.get(f"https://binlist.io/lookup/{bin_input[:6]}")
-            if res.status_code == 200:
-                data = res.json()
-                binsito[1] = data.get("scheme", "N/A").upper()
-                binsito[2] = data.get("type", "N/A").upper()
-                binsito[3] = data.get("brand", "N/A").upper()
-                binsito[4] = data.get("country", {}).get("name", "N/A")
-                binsito[5] = data.get("country", {}).get("emoji", "")
-                binsito[6] = data.get("bank", {}).get("name", "N/A")
-        except Exception:
-            pass
+        # Llamada a la API de BINLIST
+        url = f"https://binlist.io/lookup/{bin_code}/"
+        response = requests.get(url)
+        if response.status_code != 200:
+            await update.message.reply_text("❌ BIN inválido o API caída.")
+            return
 
-        # 🔢 Generar 10 tarjetas
-        tarjetas = cc_gen(bin_input)
+        data = response.json()
+        binsito = [
+            data.get("scheme", "N/A"),
+            data.get("type", "N/A"),
+            data.get("brand", "N/A"),
+            data.get("country", {}).get("name", "N/A"),
+            data.get("country", {}).get("emoji", ""),
+            data.get("bank", {}).get("name", "N/A"),
+        ]
 
-        # Aseguramos 10 cc separadas
-        cc1, cc2, cc3, cc4, cc5, cc6, cc7, cc8, cc9, cc10 = tarjetas[:10]
+        # Generar tarjetas con tu función cc_gen
+        tarjetas = cc_gen(bin_code)
+        if not tarjetas:
+            await update.message.reply_text("❌ No se pudieron generar tarjetas válidas.")
+            return
 
-        # Extra CC
-        extra = tarjetas[0].strip().split("|")
-        extra_num = extra[0]
-        mes_2 = extra[1]
-        ano_2 = extra[2]
-        cvv_2 = extra[3]
+        # Asignamos las 10 tarjetas
+        cc1, cc2, cc3, cc4, cc5, cc6, cc7, cc8, cc9, cc10 = [c.strip() for c in tarjetas[:10]]
 
-        # 📋 Mensaje con formato bonito
+        # Generamos un extra random
+        extra = cc_gen(bin_code)[0].strip()
+        extra_num, mes_2, ano_2, cvv_2 = extra.split("|")
+
+        # Formato final del mensaje
         text = f"""
-🇩🇴insuer generator🇩🇴
-⚙️───π────────⚙️
-⚙️───π────────⚙️
+🇩🇴 Insuer Generator 🇩🇴
+⚙️─────────────⚙️
+⚙️─────────────⚙️
 
-<code>{cc1.strip()}</code>
-<code>{cc2.strip()}</code>
-<code>{cc3.strip()}</code>
-<code>{cc4.strip()}</code>
-<code>{cc5.strip()}</code>
-<code>{cc6.strip()}</code>
-<code>{cc7.strip()}</code>
-<code>{cc8.strip()}</code>
-<code>{cc9.strip()}</code>
-<code>{cc10.strip()}</code>
+<code>{cc1}</code>
+<code>{cc2}</code>
+<code>{cc3}</code>
+<code>{cc4}</code>
+<code>{cc5}</code>
+<code>{cc6}</code>
+<code>{cc7}</code>
+<code>{cc8}</code>
+<code>{cc9}</code>
+<code>{cc10}</code>
 
-𝗕𝗜𝗡 𝗜𝗡𝗙𝗢: {binsito[1]} - {binsito[2]} - {binsito[3]}
-𝗖𝗢𝗨𝗡𝗧𝗥𝗬: {binsito[4]} {binsito[5]}
-𝗕𝗔𝗡𝗞: {binsito[6]}
+BIN INFO: {binsito[0]} - {binsito[1]} - {binsito[2]}
+COUNTRY: {binsito[4]} {binsito[3]}
+BANK: {binsito[5]}
 
-𝗘𝗫𝗧𝗥𝗔: <code>{extra_num}|{mes_2}|{ano_2}|{cvv_2}</code>
+EXTRA: <code>{extra_num}|{mes_2}|{ano_2}|{cvv_2}</code>
 """
 
         await update.message.reply_text(text, parse_mode="HTML")
 
     except Exception as e:
-        await update.message.reply_text(f"❌ Error interno: {e}")
+        await update.message.reply_text(f"❌ Error interno: {str(e)}")
