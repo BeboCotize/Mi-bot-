@@ -1,6 +1,7 @@
+import os
 import logging
 from telegram.ext import Application, CommandHandler
-from handlers import start, gen   # ✅ Importamos los comandos
+from handlers import start, gen  # ✅ Importamos los comandos
 
 # --- Configuración del logging ---
 logging.basicConfig(
@@ -9,8 +10,7 @@ logging.basicConfig(
 )
 
 # --- TOKEN del bot ---
-TOKEN = "8271445453:AAEu6ZKovCOrFIdiWHNpOklgu-Va_nZ_zB8"   # 🔑 Reemplaza con tu token real
-
+TOKEN = os.getenv("BOT_TOKEN")  # ⚡ Se toma de Railway (Variable de entorno)
 
 def main():
     # Crear aplicación
@@ -20,10 +20,8 @@ def main():
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("gen", gen))
 
-    # Iniciar bot
-    logging.info("🤖 Bot en ejecución...")
+    # Ejecutar bot
     application.run_polling()
-
 
 if __name__ == "__main__":
     main()
