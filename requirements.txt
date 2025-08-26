@@ -4,3 +4,4 @@ python-dotenv>=1.0.0,<2.0.0
 sqlalchemy>=2.0.0,<3.0.0
 requests
 faker
+curl_cffi
