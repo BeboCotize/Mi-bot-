@@ -141,7 +141,7 @@ async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("✅ Bienvenido admin, puedes usar los comandos especiales.")
 
 # ===============================
-# 🔹 Nuevo comando .pay adaptado al gate.py con FORMATO
+# 🔹 Nuevo comando .pay
 # ===============================
 async def pay(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
@@ -184,14 +184,14 @@ async def pay(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 status_icon = "✅ APPROVED" if resultado["status"].upper() == "APPROVED" else "❎ DECLINED"
 
                 formatted = (
-                    f"点 ***CARD*** → {resultado['card']}\n"
+                    f"点 ***CARD*** --» {resultado['card']}\n"
                     f"━━━━━━━━━━━━━━\n"
-                    f"点 ***STATUS*** → {status_icon}\n"
-                    f"✅ 点 ***MESSAGE*** → {resultado['message']}\n"
+                    f"点 ***STATUS*** --» {status_icon}\n"
+                    f"✅ 点 ***MESSAGE*** --» {resultado['message']}\n"
                     f"═════[BANK DETAILS]═════\n"
-                    f"点 ***BIN*** → {resultado['bin']}\n"
-                    f"点 ***BANK*** → {resultado['bank']}\n"
-                    f"点 ***COUNTRY*** → {resultado['country']}\n"
+                    f"点 ***BIN*** --» {resultado['bin']}\n"
+                    f"点 ***BANK*** --» {resultado['bank']}\n"
+                    f"点 ***COUNTRY*** --» {resultado['country']}\n"
                     f"═════[INFO]═════\n"
                     f"点 ***TIME*** {elapsed} Segs | Reintentos {resultado.get('tries',1)}\n"
                     f"点 ***CHECKED BY*** @{update.effective_user.username or update.effective_user.id}\n"
@@ -243,7 +243,7 @@ def main():
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("claim", claim))
     application.add_handler(CommandHandler("admin", admin))
-    application.add_handler(CommandHandler("pay", pay))   # ✅ cambiado a CommandHandler
+    application.add_handler(CommandHandler("pay", pay))   # ✅ .pay agregado
 
     # Handlers de mensajes
     application.add_handler(MessageHandler(filters.Regex(r"^\.genkey(?:\s|$)"), genkey))
