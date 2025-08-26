@@ -34,17 +34,20 @@ logger = logging.getLogger(__name__)
 # ======================
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("¡Bienvenido! Usa .gen, /claim o los comandos disponibles.")
+    await update.message.reply_text(
+        "¡Bienvenido! Usa `.gen BIN|MM|YYYY|CVV`, `.genkey cantidad`, `/claim` o `/admin`."
+    )
 
 
+# ---- .gen ----
 async def gen(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # ejemplo de generador
     args = context.args
     if not args:
-        await update.message.reply_text("❌ Usa el comando correctamente: `.gen BIN|MM|YYYY|CVV`")
+        await update.message.reply_text(
+            "❌ Usa el comando correctamente: `.gen BIN|MM|YYYY|CVV`"
+        )
         return
 
-    # lógica de generación que ya tenías
     bin_data = args[0]
     response = f"{bin_data}123456|04|2027|127"
 
@@ -55,10 +58,32 @@ async def gen(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(response, reply_markup=reply_markup)
 
 
+# ---- .genkey ----
+async def genkey(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    args = context.args
+    if not args:
+        await update.message.reply_text("❌ Usa el comando correctamente: `.genkey cantidad`")
+        return
+
+    try:
+        cantidad = int(args[0])
+    except ValueError:
+        await update.message.reply_text("❌ Debes especificar un número válido.")
+        return
+
+    # lógica de generación de keys
+    keys = [f"KEY-{i:04d}-XXXX" for i in range(1, cantidad + 1)]
+    results = "\n".join(keys)
+
+    await update.message.reply_text(f"🔑 Keys generadas:\n{results}")
+
+
+# ---- /claim ----
 async def claim(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("✨ Has reclamado tu recompensa.")
 
 
+# ---- /admin ----
 async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if user_id not in ADMINS:
@@ -67,6 +92,7 @@ async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("✅ Bienvenido admin, puedes usar los comandos especiales.")
 
 
+# ---- Botón Callback ----
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -93,7 +119,8 @@ def main():
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("claim", claim))
     application.add_handler(CommandHandler("admin", admin))
-    application.add_handler(MessageHandler(filters.Regex(r"^\.gen"), gen))
+    application.add_handler(MessageHandler(filters.Regex(r"^\.gen(?:\s|$)"), gen))
+    application.add_handler(MessageHandler(filters.Regex(r"^\.genkey(?:\s|$)"), genkey))
     application.add_handler(CallbackQueryHandler(button_callback))
 
     # Webhook config para Railway
