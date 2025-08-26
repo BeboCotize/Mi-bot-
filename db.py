@@ -1,70 +1,55 @@
-# db.py
-import datetime
+import json
+import os
 
-# Simulamos la base de datos con un diccionario
-users = {}       # user_id: {"registered": True/False, "banned": True/False, "admin": True/False, "key_expiry": datetime}
-keys = {}        # key: {"days": X, "used": False}
+USERS_FILE = "data/users.json"
+KEYS_FILE = "data/keys.json"
 
+# 🔹 Helpers
+def load_json(path):
+    if not os.path.exists(path):
+        return {}
+    with open(path, "r") as f:
+        try:
+            return json.load(f)
+        except:
+            return {}
 
-# ---------- USUARIOS ----------
-def add_user(user_id):
-    """Registrar un usuario nuevo"""
-    if user_id not in users:
-        users[user_id] = {
-            "registered": False,
-            "banned": False,
-            "admin": False,
-            "key_expiry": None
-        }
+def save_json(path, data):
+    with open(path, "w") as f:
+        json.dump(data, f, indent=4)
 
-def is_user_registered(user_id):
-    """Verifica si el usuario está registrado con key"""
-    return users.get(user_id, {}).get("registered", False)
+# 🔹 Usuarios
+def registrar_usuario(user_id, username):
+    users = load_json(USERS_FILE)
+    users[str(user_id)] = {"username": username, "registrado": False, "admin": False, "baneado": False}
+    save_json(USERS_FILE, users)
 
-def set_registered(user_id, days):
-    """Activa la cuenta del usuario con días de validez"""
-    if user_id in users:
-        users[user_id]["registered"] = True
-        users[user_id]["key_expiry"] = datetime.datetime.now() + datetime.timedelta(days=days)
+def marcar_registrado(user_id):
+    users = load_json(USERS_FILE)
+    if str(user_id) in users:
+        users[str(user_id)]["registrado"] = True
+        save_json(USERS_FILE, users)
 
-
-# ---------- BANEOS ----------
 def ban_user(user_id):
-    """Banea al usuario"""
-    if user_id in users:
-        users[user_id]["banned"] = True
+    users = load_json(USERS_FILE)
+    if str(user_id) in users:
+        users[str(user_id)]["baneado"] = True
+        save_json(USERS_FILE, users)
 
 def unban_user(user_id):
-    """Desbanea al usuario"""
-    if user_id in users:
-        users[user_id]["banned"] = False
+    users = load_json(USERS_FILE)
+    if str(user_id) in users:
+        users[str(user_id)]["baneado"] = False
+        save_json(USERS_FILE, users)
 
-def is_banned(user_id):
-    """Revisa si el usuario está baneado"""
-    return users.get(user_id, {}).get("banned", False)
+def set_admin(user_id):
+    users = load_json(USERS_FILE)
+    if str(user_id) in users:
+        users[str(user_id)]["admin"] = True
+        save_json(USERS_FILE, users)
 
-
-# ---------- ADMINS ----------
-def add_admin(user_id):
-    """Convierte a un usuario en admin"""
-    if user_id in users:
-        users[user_id]["admin"] = True
-
-def is_admin(user_id):
-    """Verifica si el usuario es admin"""
-    return users.get(user_id, {}).get("admin", False)
-
-
-# ---------- KEYS ----------
-def generate_key(key, days):
-    """Genera una key válida por X días"""
-    keys[key] = {"days": days, "used": False}
-
-def redeem_key(user_id, key):
-    """Canjea una key y activa al usuario"""
-    if key in keys and not keys[key]["used"]:
-        days = keys[key]["days"]
-        set_registered(user_id, days)
-        keys[key]["used"] = True
-        return True
-    return False
+# 🔹 Keys
+def add_key(key, expires):
+    keys = load_json(KEYS_FILE)
+    keys[key] = {"expires": expires}
+    save_json(KEYS_FILE, keys)
