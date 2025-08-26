@@ -1,4 +1,3 @@
-# bot.py
 import os
 import logging
 import random
@@ -142,7 +141,7 @@ async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("✅ Bienvenido admin, puedes usar los comandos especiales.")
 
 # ===============================
-# 🔹 Comando .pay (con mensaje + código)
+# 🔹 Nuevo comando .pay adaptado al gate.py
 # ===============================
 async def pay(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
@@ -162,50 +161,23 @@ async def pay(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("⚠️ Uso correcto: `.pay CC|MM|YYYY|CVV`")
             return
 
-        tarjetas = context.args
+        tarjetas = context.args  # permite varias tarjetas separadas por espacio
+        resultados = []
+
         regex_cc = re.compile(r"^(\d{15,16})\|((0[1-9])|(1[0-2]))\|(\d{4})\|(\d{3,4})$")
 
         for tarjeta in tarjetas:
             if not regex_cc.match(tarjeta):
-                await update.message.reply_text(f"{tarjeta} → ⚠️ Formato inválido. Usa CC|MM|YYYY|CVV")
+                resultados.append(f"{tarjeta} → ⚠️ Formato inválido. Usa CC|MM|YYYY|CVV")
                 continue
 
-            # Mensaje inicial
-            msg = await update.message.reply_text("⏳ Procesando, espere...")
-
-            start = time.time()
             try:
-                resultado = gate.ccn_gate(tarjeta)
-                elapsed = round(time.time() - start, 2)
-
-                if "error" in resultado:
-                    await msg.edit_text(f"{tarjeta} → ❌ Error interno: {resultado['error']}")
-                    continue
-
-                # Status con emoji
-                status_icon = "✅ APPROVED" if resultado["status"].upper() == "APPROVED" else "❎ DECLINED"
-
-                # ✅ Se incluye el MESSAGE con texto + código
-                formatted = (
-                    f"━━━━━━━━━━━━━━\n"
-                    f"点 ***CARD*** --» {resultado['card']}\n"
-                    f"━━━━━━━━━━━━━━\n"
-                    f"点 ***STATUS*** --» {status_icon}\n"
-                    f"━━━━━━━━━━━━━━\n"
-                    f"点 ***MESSAGE*** --» {resultado['message']} | CODE: {resultado.get('code','N/A')}\n"
-                    f"═════[BANK DETAILS]═════\n"
-                    f"点 ***BIN*** --» {resultado['bin']}\n"
-                    f"点 ***BANK*** --» {resultado['bank']}\n"
-                    f"点 ***COUNTRY*** --» {resultado['country']}\n"
-                    f"═════[INFO]═════\n"
-                    f"点 ***TIME*** {elapsed} Segs | Reintentos {resultado.get('tries',1)}\n"
-                    f"点 ***CHECKED BY*** @{update.effective_user.username or update.effective_user.id}\n"
-                    f"━━━━━━━━━━━━━━"
-                )
-
-                await msg.edit_text(formatted, parse_mode="Markdown")
+                resultado = gate.ccn_gate(tarjeta)  # 🔹 ahora llama a ccn_gate
+                resultados.append(f"{tarjeta} → {resultado}")
             except Exception as e:
-                await msg.edit_text(f"{tarjeta} → ❌ Error interno: {str(e)}")
+                resultados.append(f"{tarjeta} → ❌ Error interno: {str(e)}")
+
+        await update.message.reply_text("\n".join(resultados))
 
     except Exception as e:
         await update.message.reply_text(f"❌ Error en .pay: {str(e)}")
@@ -248,7 +220,7 @@ def main():
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("claim", claim))
     application.add_handler(CommandHandler("admin", admin))
-    application.add_handler(CommandHandler("pay", pay))   # ✅ .pay agregado
+    application.add_handler(CommandHandler("pay", pay))   # ✅ cambiado a CommandHandler
 
     # Handlers de mensajes
     application.add_handler(MessageHandler(filters.Regex(r"^\.genkey(?:\s|$)"), genkey))
