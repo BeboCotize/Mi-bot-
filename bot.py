@@ -4,7 +4,7 @@ import string
 import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
-
+ 
 TOKEN = "8271445453:AAGkEThWtDCPRfEFOUfzLBxc3lIriZ9SvsM"
 ADMIN_IDS = [6629555218]  # <-- pon aquí tu ID de admin
 
