@@ -1,5 +1,7 @@
 import os
 import logging
+import random
+import string
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application,
@@ -30,60 +32,57 @@ logger = logging.getLogger(__name__)
 
 
 # ======================
+# FUNCIONES AUXILIARES
+# ======================
+def generar_key(longitud: int = 16) -> str:
+    """Genera una key aleatoria de letras y números."""
+    return ''.join(random.choices(string.ascii_uppercase + string.digits, k=longitud))
+
+
+# ======================
 # HANDLERS
 # ======================
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "¡Bienvenido! Usa `.gen BIN|MM|YYYY|CVV`, `.genkey cantidad`, `/claim` o `/admin`."
-    )
+    await update.message.reply_text("¡Bienvenido! Usa .gen, .genkey, /claim o los comandos disponibles.")
 
 
-# ---- .gen ----
 async def gen(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # ejemplo de generador
     args = context.args
     if not args:
-        await update.message.reply_text(
-            "❌ Usa el comando correctamente: `.gen BIN|MM|YYYY|CVV`"
-        )
+        await update.message.reply_text("❌ Usa el comando correctamente: `.gen BIN|MM|YYYY|CVV`")
         return
 
     bin_data = args[0]
     response = f"{bin_data}123456|04|2027|127"
 
-    # botón regenerar
     keyboard = [[InlineKeyboardButton("🔄 Regenerar 10 más", callback_data=f"regen|{bin_data}")]]
     reply_markup = InlineKeyboardMarkup(keyboard)
 
     await update.message.reply_text(response, reply_markup=reply_markup)
 
 
-# ---- .genkey ----
 async def genkey(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    args = context.args
-    if not args:
+    user_id = update.effective_user.id
+    if user_id not in ADMINS:
+        await update.message.reply_text("⛔ No tienes permisos para generar keys.")
+        return
+
+    args = context.message.text.split()
+    if len(args) < 2 or not args[1].isdigit():
         await update.message.reply_text("❌ Usa el comando correctamente: `.genkey cantidad`")
         return
 
-    try:
-        cantidad = int(args[0])
-    except ValueError:
-        await update.message.reply_text("❌ Debes especificar un número válido.")
-        return
-
-    # lógica de generación de keys
-    keys = [f"KEY-{i:04d}-XXXX" for i in range(1, cantidad + 1)]
-    results = "\n".join(keys)
-
-    await update.message.reply_text(f"🔑 Keys generadas:\n{results}")
+    cantidad = int(args[1])
+    keys = [generar_key() for _ in range(cantidad)]
+    await update.message.reply_text("✅ Keys generadas:\n" + "\n".join(keys))
 
 
-# ---- /claim ----
 async def claim(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("✨ Has reclamado tu recompensa.")
 
 
-# ---- /admin ----
 async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if user_id not in ADMINS:
@@ -92,15 +91,12 @@ async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("✅ Bienvenido admin, puedes usar los comandos especiales.")
 
 
-# ---- Botón Callback ----
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
 
     if query.data.startswith("regen|"):
         bin_data = query.data.split("|", 1)[1]
-
-        # lógica regenerar
         results = "\n".join([f"{bin_data}{i}23456|04|2027|127" for i in range(10)])
 
         keyboard = [[InlineKeyboardButton("🔄 Regenerar 10 más", callback_data=f"regen|{bin_data}")]]
@@ -119,8 +115,11 @@ def main():
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("claim", claim))
     application.add_handler(CommandHandler("admin", admin))
-    application.add_handler(MessageHandler(filters.Regex(r"^\.gen(?:\s|$)"), gen))
+
+    # Muy importante: primero .genkey, después .gen
     application.add_handler(MessageHandler(filters.Regex(r"^\.genkey(?:\s|$)"), genkey))
+    application.add_handler(MessageHandler(filters.Regex(r"^\.gen\s+"), gen))
+
     application.add_handler(CallbackQueryHandler(button_callback))
 
     # Webhook config para Railway
