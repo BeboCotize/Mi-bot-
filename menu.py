@@ -18,4 +18,4 @@ async def button_handler(update, context):
     elif query.data == "gateway":
         await query.edit_message_text("🌐 Gateway activo...")
     elif query.data == "hola":
-        await query.edit_message_text("👋 Hola xd")
+        await query.edit_message_text("👋 Hola xd") 
