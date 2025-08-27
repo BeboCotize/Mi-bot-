@@ -4,16 +4,17 @@ import os
 import re
 import pytz 
 import datetime
-from cc_gen import cc_gen  # tu cc_gen.py debe tener estas funciones
+from cc_gen import cc_gen  # tu cc_gen.py debe tener las funciones que pasaste
 from datetime import timedelta
 from flask import Flask, request
+import requests
 
 # =============================
 #   CONFIG BOT
 # =============================
 TOKEN = os.getenv("BOT_TOKEN")
 URL = os.getenv("APP_URL")  # ej: https://mi-bot-production.up.railway.app
-ADMIN_ID = int(os.getenv("ADMIN_ID", "6629555218"))  # tu ID de admin
+ADMIN_ID = int(os.getenv("ADMIN_ID", "6629555218"))  # tu ID de admin fijo
 
 bot = telebot.TeleBot(TOKEN)
 
@@ -53,6 +54,26 @@ def ver_user(user_id: str):
         return False
     expira = datetime.datetime.fromisoformat(users[user_id]["expires"])
     return expira > datetime.datetime.now()
+
+# =============================
+#   BINLIST LOOKUP
+# =============================
+def binlist(bin_number: str):
+    try:
+        r = requests.get(f"https://lookup.binlist.net/{bin_number}")
+        if r.status_code == 200:
+            data = r.json()
+            brand = data.get("scheme", "Unknown").upper()
+            tipo = data.get("type", "Unknown").upper()
+            level = data.get("brand", "Unknown").upper()
+            country_name = data.get("country", {}).get("name", "Unknown")
+            country_code = data.get("country", {}).get("alpha2", "--")
+            bank = data.get("bank", {}).get("name", "Unknown")
+            return (True, brand, tipo, level, country_name, country_code, bank)
+        else:
+            return (False, None, None, None, None, None, None)
+    except Exception:
+        return (False, None, None, None, None, None, None)
 
 # =============================
 #   COMANDOS
@@ -126,77 +147,63 @@ def claim(message):
 # =============================
 @bot.message_handler(commands=['gen'])
 def gen(message):
-    userid = str(message.from_user.id)
-    
-    if not ver_user(userid):
-        return bot.reply_to(message, '🚫 No estás autorizado, contacta @colale1k.')
-    
-    # Capturar argumento completo después de /gen
-    args = message.text.split(" ", 1)
-    if len(args) < 2:
-        return bot.reply_to(message, "❌ Debes especificar un BIN o formato.")
-    
-    inputcc = args[1].strip()  # puede ser "47926100300xxxx|08|2030|rnd"
-    partes = inputcc.split("|")
+    try:
+        userid = str(message.from_user.id)
+        
+        if not ver_user(userid):
+            return bot.reply_to(message, '🚫 No estás autorizado, contacta @colale1k.')
+        
+        args = message.text.split(" ", 1)
+        if len(args) < 2:
+            return bot.reply_to(message, "❌ Debes especificar un BIN o formato.")
+        
+        inputcc = args[1].strip()
+        partes = inputcc.split("|")
 
-    cc  = partes[0] if len(partes) > 0 else ""
-    mes = partes[1] if len(partes) > 1 else "xx"
-    ano = partes[2] if len(partes) > 2 else "xxxx"
-    cvv = partes[3] if len(partes) > 3 else "rnd"
+        cc  = partes[0] if len(partes) > 0 else ""
+        mes = partes[1] if len(partes) > 1 else "xx"
+        ano = partes[2] if len(partes) > 2 else "xxxx"
+        cvv = partes[3] if len(partes) > 3 else "rnd"
 
-    if len(cc) < 6:
-        return bot.reply_to(message, "❌ extra incompleta")
-    
-    bin_number = cc[:6]
-    if cc.isdigit():
-        cc = cc[:12]
+        if len(cc) < 6:
+            return bot.reply_to(message, "❌ BIN incompleto")
+        
+        bin_number = cc[:6]
+        if cc.isdigit():
+            cc = cc[:12]
 
-    if mes.isdigit():
-        if ano.isdigit():
+        if mes.isdigit() and ano.isdigit():
             if len(ano) == 2: 
                 ano = '20' + ano
             IST = pytz.timezone('US/Central')
             now = datetime.datetime.now(IST)
             if (datetime.datetime.strptime(now.strftime("%m-%Y"), "%m-%Y") > 
                 datetime.datetime.strptime(f'{mes}-{ano}', "%m-%Y")):
-                return bot.reply_to(message, "❌ fecha incorrecta")
+                return bot.reply_to(message, "❌ Fecha incorrecta")
 
-    card = cc_gen(cc, mes, ano, cvv)
-    if card:
-        cc1,cc2,cc3,cc4,cc5,cc6,cc7,cc8,cc9,cc10 = card
-
-        extra = str(cc) + 'xxxxxxxxxxxxxxxxxxxxxxx'
-        mes_2 = mes if mes not in ['xx', 'rnd'] else mes
-        if ano not in ['xxxx','rnd']:
-            ano_2 = '20'+ano if len(ano)==2 else ano
-        else:
-            ano_2 = ano
-        cvv_2 = cvv if cvv not in ['xxx','rnd','xxxx'] else cvv
-
+        cards = cc_gen(cc, mes, ano, cvv)
+        if not cards:
+            return bot.reply_to(message, "❌ No se pudo generar tarjetas, revisa el BIN o formato.")
+        
         binsito = binlist(bin_number)
-        if binsito[0] != None:
-            text = f"""
+        if not binsito[0]:
+            binsito = (None, "Unknown", "Unknown", "Unknown", "Unknown", "--", "Unknown")
+
+        text = f"""
 🇩🇴 DEMON SLAYER GENERATOR 🇩🇴
 ⚙️──────────────⚙️
+"""        
+        for c in cards:
+            text += f"<code>{c.strip()}</code>\n"
 
-<code>{cc1.strip()}</code>
-<code>{cc2.strip()}</code>
-<code>{cc3.strip()}</code>
-<code>{cc4.strip()}</code>
-<code>{cc5.strip()}</code>
-<code>{cc6.strip()}</code>
-<code>{cc7.strip()}</code>
-<code>{cc8.strip()}</code>
-<code>{cc9.strip()}</code>
-<code>{cc10.strip()}</code>
-
+        text += f"""
 𝗕𝗜𝗡 𝗜𝗡𝗙𝗢: {binsito[1]} - {binsito[2]} - {binsito[3]}
 𝗖𝗢𝗨𝗡𝗧𝗥𝗬: {binsito[4]} - {binsito[5]}
 𝗕𝗔𝗡𝗞: {binsito[6]}
-
-𝗘𝗫𝗧𝗥𝗔: <code>{extra[0:16]}|{mes_2}|{ano_2}|{cvv_2}</code>
 """
-            bot.reply_to(message, text, parse_mode="HTML")
+        bot.reply_to(message, text, parse_mode="HTML")
+    except Exception as e:
+        bot.reply_to(message, f"❌ Error interno: {e}")
 
 # =============================
 #   FLASK APP PARA RAILWAY
@@ -218,12 +225,10 @@ def home():
 #   MAIN
 # =============================
 if __name__ == "__main__":
-    # Si corres en local → usa polling
     if os.getenv("RAILWAY_ENVIRONMENT") is None:
         print("🤖 Bot en ejecución local con polling...")
         bot.infinity_polling()
     else:
-        # Si corres en Railway → usa webhook
         port = int(os.environ.get("PORT", 5000))
         bot.remove_webhook()
         bot.set_webhook(url=f"{URL}/{TOKEN}")
