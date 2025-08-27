@@ -6,7 +6,7 @@ import telebot
 from flask import Flask, request
 
 # === IMPORTAMOS EL GENERADOR ===
-from cc_gen import cc_gen, binlist
+from cc_gen import cc_gen
 
 # === CONFIG ===
 TOKEN = os.getenv("BOT_TOKEN", "AQUI_TU_TOKEN")  # Railway -> Config Vars
