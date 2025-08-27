@@ -1,26 +1,22 @@
 import os
-from telegram.ext import Application, CommandHandler
-from handlers import start, gen
+from telegram import Update
+from telegram.ext import Application, CommandHandler, ContextTypes
 
-# ─────────────────────────────
-#   📌 MAIN BOT
-# ─────────────────────────────
+TOKEN = os.getenv("BOT_TOKEN")
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    print("📩 Llego un mensaje:", update.message.text)
+    await update.message.reply_text("Hola! 👋 El bot está funcionando ✅")
+
 def main():
-    # Obtiene el token desde variable de entorno (Railway)
-    TOKEN = os.getenv("BOT_TOKEN")
-    if not TOKEN:
-        raise ValueError("❌ No se encontró la variable BOT_TOKEN en Railway.")
+    print("🚀 Iniciando bot con token:", TOKEN[:10], "...")  # Muestra parte del token
+    app = Application.builder().token(TOKEN).build()
 
-    # Inicializar aplicación
-    application = Application.builder().token(TOKEN).build()
+    # Comando /start
+    app.add_handler(CommandHandler("start", start))
 
-    # Handlers principales
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("gen", gen))
-
-    # Inicia el bot
-    print("✅ Bot iniciado correctamente...")
-    application.run_polling()
+    # Corre el bot
+    app.run_polling()
 
 if __name__ == "__main__":
     main()
