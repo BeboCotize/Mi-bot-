@@ -10,10 +10,13 @@ from cc_gen import cc_gen  # tu archivo ya existente
 TOKEN = os.getenv("BOT_TOKEN")
 URL = os.getenv("APP_URL")  # URL de Railway
 
-bot = telebot.TeleBot(TOKEN, parse_mode="HTML")
-server = Flask(__name__)
+if not TOKEN:
+    raise ValueError("❌ BOT_TOKEN no configurado en Railway")
+if not URL:
+    raise ValueError("❌ APP_URL no configurado en Railway")
 
-ADMIN_ID = int(os.getenv("ADMIN_ID", "6629555218"))  # cambia por tu ID
+bot = telebot.TeleBot(TOKEN, parse_mode="HTML")
+ADMIN_ID = int(os.getenv("ADMIN_ID", "123456789"))  # cambia por tu ID
 
 # Inicializar base de datos
 init_db()
@@ -52,7 +55,6 @@ def gen(message):
     if not inputcc:
         return bot.reply_to(message, "⚠️ Extra no reconocida")
     
-    # Aquí puedes usar tu mismo código largo que me pasaste para generar tarjetas
     cc = inputcc[0]
     mes, ano, cvv = "xx", "xxxx", "rnd"
 
@@ -79,20 +81,31 @@ def genkey(message):
     generate_key(key, exp_date.isoformat())
     bot.reply_to(message, f"✅ Key generada:\n\n<code>{key}</code>\nExpira: {exp_date}")
 
-# ──────────────── WEBHOOK ────────────────
 
-@server.route(f'/{TOKEN}', methods=['POST'])
-def webhook():
-    json_str = request.stream.read().decode("UTF-8")
-    update = telebot.types.Update.de_json(json_str)
-    bot.process_new_updates([update])
-    return "!", 200
-
-@server.route("/")
-def index():
-    return "Bot funcionando!", 200
+# ──────────────── MAIN / WEBHOOK ────────────────
 
 if __name__ == "__main__":
+    from telebot import types
+
+    app = Flask(__name__)
+
+    # Ruta raíz (para probar si el bot responde en Railway)
+    @app.route("/", methods=["GET"])
+    def home():
+        return "🤖 Bot activo en Railway", 200
+
+    # Ruta webhook de Telegram
+    @app.route(f"/{TOKEN}", methods=["POST"])
+    def webhook():
+        json_str = request.get_data().decode("UTF-8")
+        update = types.Update.de_json(json_str)
+        bot.process_new_updates([update])
+        return "OK", 200
+
+    # Registrar webhook en Telegram
     bot.remove_webhook()
     bot.set_webhook(url=f"{URL}/{TOKEN}")
-    server.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+
+    # Iniciar servidor Flask en Railway
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
