@@ -1,150 +1,98 @@
-import telebot
-import datetime
-import random
-import string
+import os
 import re
+import datetime
 import pytz
-from db import init_db, add_key, use_key, ver_user
-from cc_gen import cc_gen #binlist  # asumo que tu cc_gen.py trae estas funciones
+import telebot
+from flask import Flask, request
+from db import init_db, add_user, user_has_access, claim_key, generate_key
+from cc_gen import cc_gen  # tu archivo ya existente
 
-TOKEN = "8271445453:AAE7sVaxjpSVHNxCwbiHFKK2cxjK8vxuDsI"
-ADMIN_ID = 123456789  # 🔴 cámbialo por tu ID real
+TOKEN = os.getenv("BOT_TOKEN")
+URL = os.getenv("APP_URL")  # URL de Railway
+
 bot = telebot.TeleBot(TOKEN, parse_mode="HTML")
+server = Flask(__name__)
 
-# Inicializa DB
+ADMIN_ID = int(os.getenv("ADMIN_ID", "6629555218"))  # cambia por tu ID
+
+# Inicializar base de datos
 init_db()
 
-# ─────────────────────────────
-#   📌 START
-# ─────────────────────────────
+# ──────────────── COMANDOS ────────────────
+
 @bot.message_handler(commands=['start'])
 def start(message):
-    bot.reply_to(message, "👋 Bienvenido al bot!\nUsa /gen pero necesitas una KEY válida.\nReclámala con /claim <KEY>.")
+    user_id = str(message.from_user.id)
+    add_user(user_id)
+    bot.reply_to(message, "👋 Bienvenido, usa /claim <key> para activar tu acceso.")
 
-# ─────────────────────────────
-#   📌 GENKEY (solo admin)
-# ─────────────────────────────
-@bot.message_handler(commands=['genkey'])
-def genkey(message):
-    if str(message.from_user.id) != str(ADMIN_ID):
-        return bot.reply_to(message, "⛔ No autorizado.")
-    try:
-        args = message.text.split()
-        days = int(args[1])
-    except:
-        return bot.reply_to(message, "Uso: /genkey <días>")
-    
-    expire_date = (datetime.datetime.now() + datetime.timedelta(days=days)).strftime("%Y-%m-%d")
-    key = ''.join(random.choices(string.ascii_uppercase + string.digits, k=12))
-    add_key(key, expire_date)
-    bot.reply_to(message, f"✅ KEY generada:\n<code>{key}</code>\n📅 Expira: {expire_date}")
 
-# ─────────────────────────────
-#   📌 CLAIM
-# ─────────────────────────────
 @bot.message_handler(commands=['claim'])
 def claim(message):
-    try:
-        key = message.text.split()[1]
-    except:
-        return bot.reply_to(message, "Uso: /claim <KEY>")
-    success, msg = use_key(key, str(message.from_user.id))
-    bot.reply_to(message, msg)
+    user_id = str(message.from_user.id)
+    parts = message.text.split()
+    if len(parts) < 2:
+        return bot.reply_to(message, "⚠️ Uso: /claim <key>")
+    
+    key = parts[1]
+    if claim_key(user_id, key):
+        bot.reply_to(message, "✅ Key aceptada, ahora tienes acceso.")
+    else:
+        bot.reply_to(message, "❌ Key inválida o expirada.")
 
-# ─────────────────────────────
-#   📌 GEN (tu código adaptado con ver_user)
-# ─────────────────────────────
+
 @bot.message_handler(commands=['gen'])
 def gen(message):
-    userid = message.from_user.id
+    user_id = str(message.from_user.id)
 
-    if ver_user(str(userid)) == False:  
-        bot.reply_to(message, '❌ No estas autorizado, contacta @colale1k.')  
-    else:  
-        inputcc = re.findall(r'[0-9x]+', message.text)  
-        if not inputcc: 
-            return bot.reply_to(message, "extra no reconocida")  
-        else:  
-            if len(inputcc) == 1:  
-                cc  = inputcc[0]  
-                mes = 'xx'  
-                ano = 'xxxx'  
-                cvv = 'rnd'  
-            elif len(inputcc) == 2:  
-                cc  = inputcc[0]  
-                mes = inputcc[1][0:2]  
-                ano = 'xxxx'  
-                cvv = 'rnd'  
-            elif len(inputcc) == 3:  
-                cc  = inputcc[0]  
-                mes = inputcc[1][0:2]  
-                ano = inputcc[2]  
-                cvv = 'rnd'  
-            elif len(inputcc) == 4:  
-                cc  = inputcc[0]  
-                mes = inputcc[1][0:2]  
-                ano = inputcc[2]  
-                cvv = inputcc[3]  
-            else:  
-                cc  = inputcc[0]  
-                mes = inputcc[1][0:2]  
-                ano = inputcc[2]  
-                cvv = inputcc[3]  
-              
-            if len(inputcc[0]) < 6: 
-                return bot.reply_to(message, "extra incompleta")  
-            else:  
-                bin_number = cc[0:6]  
-                if cc.isdigit():  
-                    cc = cc[0:12]  
-                if mes.isdigit() and ano.isdigit():  
-                    if len(ano) == 2: ano = '20'+ano  
-                    IST = pytz.timezone('US/Central')  
-                    now = datetime.datetime.now(IST)  
-                    if (datetime.datetime.strptime(now.strftime("%m-%Y"), "%m-%Y") > datetime.datetime.strptime(f'{mes}-{ano}', "%m-%Y")):  
-                        return bot.reply_to(message, "fecha incorrecta")  
-              
-                card = cc_gen(cc, mes, ano, cvv)  
-                if card:  
-                    cc1,cc2,cc3,cc4,cc5,cc6,cc7,cc8,cc9,cc10 = card  
+    if not user_has_access(user_id):
+        return bot.reply_to(message, "🚫 No tienes acceso, reclama una key.")
 
-                    extra = str(cc) + 'xxxxxxxxxxxxxxxxxxxxxxx'  
-                    if mes in ['xx','rnd']: mes_2 = mes  
-                    else: mes_2 = mes  
-                    if ano in ['xxxx','rnd']: ano_2 = ano  
-                    else:   
-                        ano_2 = '20'+ano if len(ano) == 2 else ano  
-                    if cvv in ['xxx','rnd'] or ano == 'xxxx': cvv_2 = cvv  
-                    else: cvv_2 = cvv  
+    inputcc = re.findall(r'[0-9x]+', message.text)
+    if not inputcc:
+        return bot.reply_to(message, "⚠️ Extra no reconocida")
+    
+    # Aquí puedes usar tu mismo código largo que me pasaste para generar tarjetas
+    cc = inputcc[0]
+    mes, ano, cvv = "xx", "xxxx", "rnd"
 
-                    binsito = binlist(bin_number)  
-                    if binsito[0] != None:  
-                        text = f"""
-🇩🇴 DEMON SLAYER GENERATOR 🇩🇴
-⚙️───π────────⚙️
-⚙️───π────────⚙️
+    card = cc_gen(cc, mes, ano, cvv)
+    if card:
+        respuesta = "\n".join([f"<code>{c}</code>" for c in card])
+        bot.reply_to(message, f"🇩🇴 DEMON SLAYER GENERATOR 🇩🇴\n\n{respuesta}")
+    else:
+        bot.reply_to(message, "⚠️ No se pudo generar.")
 
-<code>{cc1.strip()}</code>
-<code>{cc2.strip()}</code>
-<code>{cc3.strip()}</code>
-<code>{cc4.strip()}</code>
-<code>{cc5.strip()}</code>
-<code>{cc6.strip()}</code>
-<code>{cc7.strip()}</code>
-<code>{cc8.strip()}</code>
-<code>{cc9.strip()}</code>
-<code>{cc10.strip()}</code>
 
-𝗕𝗜𝗡 𝗜𝗡𝗙𝗢: {binsito[1]} - {binsito[2]} - {binsito[3]}
-𝗖𝗢𝗨𝗡𝗧𝗥𝗬: {binsito[4]} - {binsito[5]}
-𝗕𝗔𝗡𝗞: {binsito[6]}
+@bot.message_handler(commands=['genkey'])
+def genkey(message):
+    if message.from_user.id != ADMIN_ID:
+        return bot.reply_to(message, "🚫 No tienes permisos.")
 
-𝗘𝗫𝗧𝗥𝗔: <code>{extra[0:16]}|{mes_2}|{ano_2}|{cvv_2}</code>
-"""
-                        bot.reply_to(message, text)
+    parts = message.text.split()
+    if len(parts) < 3:
+        return bot.reply_to(message, "⚠️ Uso: /genkey <KEY> <DÍAS>")
 
-# ─────────────────────────────
-#   📌 RUN
-# ─────────────────────────────
-print("🤖 Bot corriendo...")
-bot.infinity_polling()
+    key = parts[1]
+    dias = int(parts[2])
+    exp_date = datetime.datetime.now() + datetime.timedelta(days=dias)
+    generate_key(key, exp_date.isoformat())
+    bot.reply_to(message, f"✅ Key generada:\n\n<code>{key}</code>\nExpira: {exp_date}")
+
+# ──────────────── WEBHOOK ────────────────
+
+@server.route(f'/{TOKEN}', methods=['POST'])
+def webhook():
+    json_str = request.stream.read().decode("UTF-8")
+    update = telebot.types.Update.de_json(json_str)
+    bot.process_new_updates([update])
+    return "!", 200
+
+@server.route("/")
+def index():
+    return "Bot funcionando!", 200
+
+if __name__ == "__main__":
+    bot.remove_webhook()
+    bot.set_webhook(url=f"{URL}/{TOKEN}")
+    server.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
