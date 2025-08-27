@@ -4,7 +4,7 @@ import os
 import re
 import pytz
 import datetime
-from cc_gen import cc_gen #binlist   # tu cc_gen.py debe tener estas funciones
+from cc_gen import cc_gen  # tu cc_gen.py debe tener estas funciones
 from datetime import timedelta
 from flask import Flask, request
 
@@ -128,74 +128,54 @@ def claim(message):
 def gen(message):
     userid = str(message.from_user.id)
     
-    if ver_user(userid) == False:
-        bot.reply_to(message, '🚫 No estás autorizado, contacta @colale1k.')
-        return
+    if not ver_user(userid):
+        return bot.reply_to(message, '🚫 No estás autorizado, contacta @colale1k.')
     
-    inputcc = re.findall(r'[0-9x]+', message.text)
-    if not inputcc: 
-        return bot.reply_to(message, "❌ extra no reconocida")
-    else:
-        if len(inputcc) == 1:
-            cc  = inputcc[0]
-            mes = 'xx'
-            ano = 'xxxx'
-            cvv = 'rnd'
-        elif len(inputcc) == 2:
-            cc  = inputcc[0]
-            mes = inputcc[1][0:2]
-            ano = 'xxxx'
-            cvv = 'rnd'
-        elif len(inputcc) == 3:
-            cc  = inputcc[0]
-            mes = inputcc[1][0:2]
-            ano = inputcc[2]
-            cvv = 'rnd'
-        elif len(inputcc) == 4:
-            cc  = inputcc[0]
-            mes = inputcc[1][0:2]
-            ano = inputcc[2]
-            cvv = inputcc[3]
-        else:
-            cc  = inputcc[0]
-            mes = inputcc[1][0:2]
-            ano = inputcc[2]
-            cvv = inputcc[3]
-        
-        if len(inputcc[0]) < 6: 
-            return bot.reply_to(message, "❌ extra incompleta")
-        else:
-            bin_number = cc[0:6]
-            if cc.isdigit() == True:
-                cc = cc[0:12]
-            else:
-                cc = cc
-            
-            if mes.isdigit():
-                if ano.isdigit():
-                    if len(ano) == 2: 
-                        ano = '20'+ano
-                    IST = pytz.timezone('US/Central')
-                    now = datetime.datetime.now(IST)
-                    if (datetime.datetime.strptime(now.strftime("%m-%Y"), "%m-%Y") > 
-                        datetime.datetime.strptime(f'{mes}-{ano}', "%m-%Y")):
-                        return bot.reply_to(message, "❌ fecha incorrecta")
-            
-            card = cc_gen(cc, mes, ano, cvv)
-            if card:
-                cc1,cc2,cc3,cc4,cc5,cc6,cc7,cc8,cc9,cc10 = card
+    # Capturar argumento completo después de /gen
+    args = message.text.split(" ", 1)
+    if len(args) < 2:
+        return bot.reply_to(message, "❌ Debes especificar un BIN o formato.")
+    
+    inputcc = args[1].strip()  # puede ser "47926100300xxxx|08|2030|rnd"
+    partes = inputcc.split("|")
 
-                extra = str(cc) + 'xxxxxxxxxxxxxxxxxxxxxxx'
-                mes_2 = mes if mes not in ['xx', 'rnd'] else mes
-                if ano not in ['xxxx','rnd']:
-                    ano_2 = '20'+ano if len(ano)==2 else ano
-                else:
-                    ano_2 = ano
-                cvv_2 = cvv if cvv not in ['xxx','rnd','xxxx'] else cvv
+    cc  = partes[0] if len(partes) > 0 else ""
+    mes = partes[1] if len(partes) > 1 else "xx"
+    ano = partes[2] if len(partes) > 2 else "xxxx"
+    cvv = partes[3] if len(partes) > 3 else "rnd"
 
-                binsito = binlist(bin_number)
-                if binsito[0] != None:
-                    text = f"""
+    if len(cc) < 6:
+        return bot.reply_to(message, "❌ extra incompleta")
+    
+    bin_number = cc[:6]
+    if cc.isdigit():
+        cc = cc[:12]
+
+    if mes.isdigit():
+        if ano.isdigit():
+            if len(ano) == 2: 
+                ano = '20' + ano
+            IST = pytz.timezone('US/Central')
+            now = datetime.datetime.now(IST)
+            if (datetime.datetime.strptime(now.strftime("%m-%Y"), "%m-%Y") > 
+                datetime.datetime.strptime(f'{mes}-{ano}', "%m-%Y")):
+                return bot.reply_to(message, "❌ fecha incorrecta")
+
+    card = cc_gen(cc, mes, ano, cvv)
+    if card:
+        cc1,cc2,cc3,cc4,cc5,cc6,cc7,cc8,cc9,cc10 = card
+
+        extra = str(cc) + 'xxxxxxxxxxxxxxxxxxxxxxx'
+        mes_2 = mes if mes not in ['xx', 'rnd'] else mes
+        if ano not in ['xxxx','rnd']:
+            ano_2 = '20'+ano if len(ano)==2 else ano
+        else:
+            ano_2 = ano
+        cvv_2 = cvv if cvv not in ['xxx','rnd','xxxx'] else cvv
+
+        binsito = binlist(bin_number)
+        if binsito[0] != None:
+            text = f"""
 🇩🇴 DEMON SLAYER GENERATOR 🇩🇴
 ⚙️──────────────⚙️
 
@@ -216,7 +196,7 @@ def gen(message):
 
 𝗘𝗫𝗧𝗥𝗔: <code>{extra[0:16]}|{mes_2}|{ano_2}|{cvv_2}</code>
 """
-                    bot.reply_to(message, text, parse_mode="HTML")
+            bot.reply_to(message, text, parse_mode="HTML")
 
 # =============================
 #   FLASK APP PARA RAILWAY
