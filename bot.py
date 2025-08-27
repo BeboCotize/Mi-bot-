@@ -1,19 +1,23 @@
-import os
 import telebot
+import os
 
-TOKEN = os.getenv("BOT_TOKEN")
+# === CONFIG ===
+TOKEN = os.getenv("BOT_TOKEN", "AQUI_TU_TOKEN")  # usa variable de entorno o ponlo directo
 bot = telebot.TeleBot(TOKEN)
 
-# Comando /start
-@bot.message_handler(commands=["start"])
-def start(message):
-    bot.reply_to(message, "Hola! 👋 El bot con Telebot está funcionando ✅")
+# === HANDLERS ===
+@bot.message_handler(commands=['start', 'help'])
+def send_welcome(message):
+    bot.reply_to(message, "👋 Hola! Soy tu bot hecho con telebot.\nUsa /hola para saludarme.")
 
-# Cualquier mensaje de texto
-@bot.message_handler(func=lambda m: True)
-def echo(message):
-    bot.reply_to(message, f"Me escribiste: {message.text}")
+@bot.message_handler(commands=['hola'])
+def send_hello(message):
+    bot.send_message(message.chat.id, "¡Hola crack! 😎🔥")
 
-if __name__ == "__main__":
-    print("🚀 Iniciando bot con Telebot...")
-    bot.infinity_polling()
+@bot.message_handler(func=lambda message: True)  # cualquier mensaje
+def echo_all(message):
+    bot.reply_to(message, f"Dijiste: {message.text}")
+
+# === LOOP ===
+print("🤖 Bot corriendo...")
+bot.infinity_polling()
