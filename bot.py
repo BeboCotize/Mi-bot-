@@ -8,7 +8,7 @@ from db import init_db, add_user, user_has_access, claim_key, generate_key
 from cc_gen import cc_gen  # tu archivo ya existente
 
 TOKEN = os.getenv("BOT_TOKEN")
-URL = os.getenv("mi-bot-bottoken.up.railway.app")  # URL de Railway
+URL = os.getenv("APP_URL")  # APP_URL definida en Railway
 
 if not TOKEN:
     raise ValueError("❌ BOT_TOKEN no configurado en Railway")
