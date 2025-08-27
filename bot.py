@@ -67,9 +67,9 @@ def binlist(bin_number: str):
             tipo = data.get("type", "Unknown").upper()
             level = data.get("brand", "Unknown").upper()
             country_name = data.get("country", {}).get("name", "Unknown")
-            country_code = data.get("country", {}).get("alpha2", "--")
+            flag = data.get("country", {}).get("emoji", "")
             bank = data.get("bank", {}).get("name", "Unknown")
-            return (True, brand, tipo, level, country_name, country_code, bank)
+            return (True, brand, tipo, level, country_name, flag, bank)
         else:
             return (False, None, None, None, None, None, None)
     except Exception:
@@ -187,7 +187,7 @@ def gen(message):
         
         binsito = binlist(bin_number)
         if not binsito[0]:
-            binsito = (None, "Unknown", "Unknown", "Unknown", "Unknown", "--", "Unknown")
+            binsito = (None, "Unknown", "Unknown", "Unknown", "Unknown", "", "Unknown")
 
         text = f"""
 🇩🇴 DEMON SLAYER GENERATOR 🇩🇴
@@ -198,7 +198,7 @@ def gen(message):
 
         text += f"""
 𝗕𝗜𝗡 𝗜𝗡𝗙𝗢: {binsito[1]} - {binsito[2]} - {binsito[3]}
-𝗖𝗢𝗨𝗡𝗧𝗥𝗬: {binsito[4]} - {binsito[5]}
+𝗖𝗢𝗨𝗡𝗧𝗥𝗬: {binsito[4]} {binsito[5]}
 𝗕𝗔𝗡𝗞: {binsito[6]}
 """
         bot.reply_to(message, text, parse_mode="HTML")
