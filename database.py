@@ -1,56 +1,72 @@
 import sqlite3
 import datetime
-import uuid
 
-DB_FILE = "database.db"
+DB_NAME = "bot.db"
 
 def init_db():
-    conn = sqlite3.connect(DB_FILE)
+    conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
-    c.execute("CREATE TABLE IF NOT EXISTS users (user_id TEXT PRIMARY KEY, expira TEXT)")
-    c.execute("CREATE TABLE IF NOT EXISTS keys (key TEXT PRIMARY KEY, expira TEXT, usado INTEGER)")
+    # Tabla de usuarios
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS users (
+        user_id TEXT PRIMARY KEY,
+        has_key INTEGER DEFAULT 0,
+        expire_date TEXT
+    )
+    """)
+    # Tabla de keys
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS keys (
+        key TEXT PRIMARY KEY,
+        expire_date TEXT,
+        used INTEGER DEFAULT 0
+    )
+    """)
     conn.commit()
     conn.close()
 
-def ver_user(user_id):
-    conn = sqlite3.connect(DB_FILE)
+def add_key(key, expire_date):
+    conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
-    c.execute("SELECT expira FROM users WHERE user_id=?", (user_id,))
-    row = c.fetchone()
+    c.execute("INSERT INTO keys (key, expire_date) VALUES (?,?)", (key, expire_date))
+    conn.commit()
     conn.close()
-    if not row: return False
-    expira = datetime.datetime.strptime(row[0], "%Y-%m-%d %H:%M:%S")
-    return datetime.datetime.now() <= expira
 
-def claim_key(user_id, key):
-    conn = sqlite3.connect(DB_FILE)
+def use_key(key, user_id):
+    conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
-    c.execute("SELECT expira, usado FROM keys WHERE key=?", (key,))
+    c.execute("SELECT expire_date, used FROM keys WHERE key = ?", (key,))
     row = c.fetchone()
     if not row:
         conn.close()
-        return False, "❌ Key inválida"
-    expira, usado = row
-    if usado == 1:
+        return False, "❌ La key no existe."
+    expire_date, used = row
+    if used == 1:
         conn.close()
-        return False, "❌ Esta key ya fue usada"
-    # Guardar user
-    c.execute("INSERT OR REPLACE INTO users (user_id, expira) VALUES (?,?)", (str(user_id), expira))
-    c.execute("UPDATE keys SET usado=1 WHERE key=?", (key,))
+        return False, "❌ La key ya fue usada."
+    # Marcar como usada
+    c.execute("UPDATE keys SET used = 1 WHERE key = ?", (key,))
+    # Registrar usuario autorizado
+    c.execute("INSERT OR REPLACE INTO users (user_id, has_key, expire_date) VALUES (?,?,?)", 
+              (user_id, 1, expire_date))
     conn.commit()
     conn.close()
-    return True, f"✅ Key aceptada, expira el {expira}"
+    return True, f"✅ Key reclamada! Expira el {expire_date}"
 
-def create_key(dias):
-    expira = (datetime.datetime.now() + datetime.timedelta(days=dias)).strftime("%Y-%m-%d %H:%M:%S")
-    key = str(uuid.uuid4())[:8]
-    conn = sqlite3.connect(DB_FILE)
+def check_user(user_id):
+    conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
-    c.execute("INSERT INTO keys (key, expira, usado) VALUES (?,?,0)", (key, expira))
-    conn.commit()
+    c.execute("SELECT has_key, expire_date FROM users WHERE user_id = ?", (user_id,))
+    row = c.fetchone()
     conn.close()
-    return key
+    if not row:
+        return False
+    has_key, expire_date = row
+    if has_key == 1:
+        if datetime.datetime.strptime(expire_date, "%Y-%m-%d") >= datetime.datetime.now():
+            return True
+    return False
 
-def is_admin(user_id):
-    # 🚨 pon tu propio ID de admin aquí
-    return str(user_id) in ["123456789"]
+# Alias para que tu código se lea igual
+def ver_user(user_id):
+    return check_user(user_id)
