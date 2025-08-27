@@ -190,7 +190,7 @@ def gen(message):
             binsito = (None, "Unknown", "Unknown", "Unknown", "Unknown", "", "Unknown")
 
         text = f"""
-🇩🇴 DEMON SLAYER GENERATOR 🇩🇴
+🇩🇴 INSUER GENERADOR🇩🇴
 ⚙️──────────────⚙️
 """        
         for c in cards:
