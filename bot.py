@@ -1,22 +1,19 @@
 import os
-from telegram import Update
-from telegram.ext import Application, CommandHandler, ContextTypes
+import telebot
 
 TOKEN = os.getenv("BOT_TOKEN")
+bot = telebot.TeleBot(TOKEN)
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    print("📩 Llego un mensaje:", update.message.text)
-    await update.message.reply_text("Hola! 👋 El bot está funcionando ✅")
+# Comando /start
+@bot.message_handler(commands=["start"])
+def start(message):
+    bot.reply_to(message, "Hola! 👋 El bot con Telebot está funcionando ✅")
 
-def main():
-    print("🚀 Iniciando bot con token:", TOKEN[:10], "...")  # Muestra parte del token
-    app = Application.builder().token(TOKEN).build()
-
-    # Comando /start
-    app.add_handler(CommandHandler("start", start))
-
-    # Corre el bot
-    app.run_polling()
+# Cualquier mensaje de texto
+@bot.message_handler(func=lambda m: True)
+def echo(message):
+    bot.reply_to(message, f"Me escribiste: {message.text}")
 
 if __name__ == "__main__":
-    main()
+    print("🚀 Iniciando bot con Telebot...")
+    bot.infinity_polling()
