@@ -56,19 +56,19 @@ def ver_user(user_id: str):
     return expira > datetime.datetime.now()
 
 # =============================
-#   BINLIST LOOKUP
+#   BINLIST LOOKUP (ANTIPUBLIC)
 # =============================
 def binlist(bin_number: str):
     try:
-        r = requests.get(f"https://lookup.binlist.net/{bin_number}")
+        r = requests.get(f"https://bins.antipublic.cc/bins/{bin_number}")
         if r.status_code == 200:
             data = r.json()
             brand = data.get("scheme", "Unknown").upper()
             tipo = data.get("type", "Unknown").upper()
             level = data.get("brand", "Unknown").upper()
-            country_name = data.get("country", {}).get("name", "Unknown")
-            flag = data.get("country", {}).get("emoji", "")
-            bank = data.get("bank", {}).get("name", "Unknown")
+            country_name = data.get("country_name", "Unknown")
+            flag = data.get("country_flag", "")
+            bank = data.get("bank", "Unknown")
             return (True, brand, tipo, level, country_name, flag, bank)
         else:
             return (False, None, None, None, None, None, None)
