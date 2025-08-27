@@ -13,7 +13,7 @@ from flask import Flask, request
 # =============================
 TOKEN = os.getenv("BOT_TOKEN")
 URL = os.getenv("APP_URL")  # ej: https://mi-bot-production.up.railway.app
-ADMIN_ID = int(os.getenv("ADMIN_ID", "123456789"))  # tu ID de admin
+ADMIN_ID = int(os.getenv("ADMIN_ID", "6629555218"))  # tu ID de admin
 
 bot = telebot.TeleBot(TOKEN)
 
