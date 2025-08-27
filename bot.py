@@ -14,7 +14,7 @@ bot = telebot.TeleBot(TOKEN, parse_mode="HTML")
 app = Flask(__name__)
 
 # 🔒 Usuarios permitidos
-AUTHORIZED_USERS = ["123456789", "987654321"]  # IDs de Telegram
+AUTHORIZED_USERS = ["6629555218", "987654321"]  # IDs de Telegram
 
 # === HANDLER /GEN ===
 @bot.message_handler(commands=['gen'])
