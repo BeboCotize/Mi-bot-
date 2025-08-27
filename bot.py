@@ -16,7 +16,7 @@ if not URL:
     raise ValueError("❌ APP_URL no configurado en Railway")
 
 bot = telebot.TeleBot(TOKEN, parse_mode="HTML")
-ADMIN_ID = int(os.getenv("ADMIN_ID", "123456789"))  # cambia por tu ID
+ADMIN_ID = int(os.getenv("ADMIN_ID", "6629555218"))  # cambia por tu ID
 
 # Inicializar base de datos
 init_db()
