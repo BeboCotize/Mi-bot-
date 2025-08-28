@@ -86,7 +86,7 @@ def start(message):
         chat_id = message.chat.id
 
         # Cambia esta URL por la imagen que quieras
-        photo_url = "https://i.ibb.co/4W2W8Hq/anime.jpg"
+        photo_url = "https://imgur.com/a/Lg1SmRY"
 
         markup = types.InlineKeyboardMarkup()
         markup.row(
