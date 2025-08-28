@@ -143,7 +143,7 @@ def claim(message):
         bot.reply_to(message, f"❌ Error: {e}")
 
 # =============================
-#   FUNCIÓN /GEN (CORREGIDA)
+#   FUNCIÓN /GEN (ACTUALIZADA)
 # =============================
 @bot.message_handler(commands=['gen'])
 def gen(message):
@@ -157,45 +157,24 @@ def gen(message):
         if len(args) < 2:
             return bot.reply_to(message, "❌ Debes especificar un BIN o formato.")
         
+        # Entrada limpia (sin espacios ni saltos de línea)
         inputcc = args[1].strip().replace(" ", "").replace("\n", "")
-        partes = inputcc.split("|")
 
-        cc  = partes[0] if len(partes) > 0 else ""
-        mes = partes[1] if len(partes) > 1 else "xx"
-        ano = partes[2] if len(partes) > 2 else "xxxx"
-        cvv = partes[3] if len(partes) > 3 else "rnd"
-
-        # Validaciones extra
-        if not cc or len(cc) < 6 or not cc.isdigit():
-            return bot.reply_to(message, "❌ BIN inválido o incompleto")
-
-        bin_number = cc[:6]
-        cc = cc[:12]  # limitar a 12 dígitos para generar
-
-        # Validar fecha
-        if mes.isdigit() and ano.isdigit():
-            if len(ano) == 2: 
-                ano = '20' + ano
-            try:
-                IST = pytz.timezone('US/Central')
-                now = datetime.datetime.now(IST)
-                fecha_actual = datetime.datetime.strptime(now.strftime("%m-%Y"), "%m-%Y")
-                fecha_input = datetime.datetime.strptime(f'{mes}-{ano}', "%m-%Y")
-                if fecha_actual > fecha_input:
-                    return bot.reply_to(message, "❌ Fecha incorrecta")
-            except Exception:
-                return bot.reply_to(message, "❌ Formato de fecha inválido")
-
-        # Generar tarjetas
-        cards = cc_gen(cc, mes, ano, cvv)
+        # Pasar directamente a cc_gen (tu función ya soporta todos los formatos)
+        cards = cc_gen(inputcc)
         if not cards:
             return bot.reply_to(message, "❌ No se pudo generar tarjetas, revisa el BIN o formato.")
-        
-        # Info BIN
+
+        # Extraer BIN (primeros 6 números encontrados)
+        match = re.search(r"\d{6}", inputcc)
+        bin_number = match.group(0) if match else inputcc[:6]
+
+        # Consultar binlist
         binsito = binlist(bin_number)
         if not binsito[0]:
             binsito = (None, "Unknown", "Unknown", "Unknown", "Unknown", "", "Unknown")
 
+        # Construir respuesta
         text = f"""
 🇩🇴 INSUER GENERADOR🇩🇴
 ⚙️──────────────⚙️
