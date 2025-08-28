@@ -4,7 +4,7 @@ import os
 import re
 import pytz 
 import datetime
-from cc_gen import cc_gen  # tu cc_gen.py debe tener las funciones que pasaste
+from cc_gen import cc_gen  
 from datetime import timedelta
 from flask import Flask, request
 import requests
@@ -15,8 +15,8 @@ from telebot import types
 #   CONFIG BOT
 # =============================
 TOKEN = os.getenv("BOT_TOKEN")
-URL = os.getenv("APP_URL")  # ej: https://mi-bot-production.up.railway.app
-ADMIN_ID = int(os.getenv("ADMIN_ID", "6629555218"))  # tu ID de admin fijo
+URL = os.getenv("APP_URL")  
+ADMIN_ID = int(os.getenv("ADMIN_ID", "6629555218"))  
 
 bot = telebot.TeleBot(TOKEN)
 
@@ -26,7 +26,6 @@ KEYS_FILE = "keys.json"
 # =============================
 #   HELPERS
 # =============================
-
 def load_json(file):
     if not os.path.exists(file):
         return {}
@@ -50,7 +49,6 @@ def save_keys(keys):
     save_json(KEYS_FILE, keys)
 
 def ver_user(user_id: str):
-    """Verifica si el usuario tiene key válida"""
     users = load_users()
     if user_id not in users:
         return False
@@ -58,7 +56,7 @@ def ver_user(user_id: str):
     return expira > datetime.datetime.now()
 
 # =============================
-#   BINLIST LOOKUP (ANTIPUBLIC)
+#   BINLIST LOOKUP
 # =============================
 def binlist(bin_number: str):
     try:
@@ -78,14 +76,12 @@ def binlist(bin_number: str):
         return (False, None, None, None, None, None, None)
 
 # =============================
-#   NUEVO /START CON MENÚ
+#   /START MENÚ
 # =============================
 @bot.message_handler(commands=["start"])
 def start(message):
     try:
         chat_id = message.chat.id
-
-        # Cambia esta URL por la imagen que quieras
         photo_url = "https://imgur.com/a/Lg1SmRY"
 
         markup = types.InlineKeyboardMarkup()
@@ -104,7 +100,6 @@ def start(message):
             parse_mode="Markdown",
             reply_markup=markup
         )
-
     except Exception as e:
         bot.reply_to(message, f"❌ Error en /start: {e}")
 
@@ -124,7 +119,6 @@ def callback_menu(call):
                 parse_mode="Markdown",
                 reply_markup=markup
             )
-
         elif call.data == "menu_tools":
             text = "🛠 *Menú Tools*\n\nAquí estarán tus herramientas."
             markup = types.InlineKeyboardMarkup()
@@ -138,7 +132,6 @@ def callback_menu(call):
                 parse_mode="Markdown",
                 reply_markup=markup
             )
-
         elif call.data == "menu_back":
             markup = types.InlineKeyboardMarkup()
             markup.row(
@@ -155,18 +148,14 @@ def callback_menu(call):
                 parse_mode="Markdown",
                 reply_markup=markup
             )
-
         elif call.data == "menu_exit":
             bot.delete_message(chat_id=call.message.chat.id, message_id=call.message.message_id)
-
     except Exception as e:
         bot.answer_callback_query(call.id, f"❌ Error en menú: {e}")
 
 # =============================
-#   COMANDOS EXISTENTES
+#   /GENKEY (ADMIN)
 # =============================
-
-# Generar key (solo admin)
 @bot.message_handler(commands=["genkey"])
 def genkey(message):
     try:
@@ -194,7 +183,9 @@ def genkey(message):
     except Exception as e:
         bot.reply_to(message, f"❌ Error: {e}")
 
-# Reclamar key
+# =============================
+#   /CLAIM
+# =============================
 @bot.message_handler(commands=["claim"])
 def claim(message):
     try:
@@ -225,13 +216,12 @@ def claim(message):
         bot.reply_to(message, f"❌ Error: {e}")
 
 # =============================
-#   FUNCIÓN /GEN
+#   /GEN
 # =============================
 @bot.message_handler(commands=['gen'])
 def gen(message):
     try:
         userid = str(message.from_user.id)
-        
         if not ver_user(userid):
             return bot.reply_to(message, '🚫 No estás autorizado, contacta @colale1k.')
         
@@ -288,13 +278,12 @@ def gen(message):
         bot.reply_to(message, f"❌ Error interno: {e}")
 
 # =============================
-#   FUNCIÓN /SG (SAGEPAY)
+#   /SG (SAGEPAY)
 # =============================
 @bot.message_handler(commands=['sg'])
 def sg(message):
     try:
         userid = str(message.from_user.id)
-
         if not ver_user(userid):
             return bot.reply_to(message, '🚫 No estás autorizado, contacta @colale1k.')
 
@@ -303,25 +292,42 @@ def sg(message):
             return bot.reply_to(message, "❌ Uso correcto: /sg <cc|mm|yyyy|cvv>")
 
         card = args[1].strip()
-        result = ccn_gate(card)  # ✅ llamada a tu función en sagepay.py
+        result = ccn_gate(card)  
 
         if isinstance(result, dict):
+            resp_text = result.get("resp", "")
+            estado = "✅ Approved" if "CVV2 MISMATCH" in resp_text.upper() else "❌ Declined"
+
+            # BIN Info
+            bin_number = result.get("card","")[:6]
+            binsito = binlist(bin_number)
+            if not binsito[0]:
+                binsito = (None, "Unknown", "Unknown", "Unknown", "Unknown", "", "Unknown")
+
+            checked_by = f"@{message.from_user.username}" if message.from_user.username else message.from_user.first_name
+
             text = f"""
-💳 <b>Resultado Sagepay</b>
+💳 <b>Respuesta Sagepay</b>
 Card: <code>{result.get('card','')}</code>
-Estado: {result.get('status','')}</code>
-Respuesta: {result.get('resp','')}
+Estado: {estado}
+
+BIN INFO: {binsito[1]} - {binsito[2]} - {binsito[3]}
+COUNTRY: {binsito[4]} {binsito[5]}
+BANK: {binsito[6]}
+
+Respuesta: <code>{resp_text}</code>
+
+Checked By: {checked_by}
 """
         else:
             text = f"<b>Respuesta Sagepay</b>\n<code>{result}</code>"
 
         bot.reply_to(message, text, parse_mode="HTML")
-
     except Exception as e:
         bot.reply_to(message, f"❌ Error interno en /sg: {e}")
 
 # =============================
-#   FLASK APP PARA RAILWAY
+#   FLASK APP
 # =============================
 app = Flask(__name__)
 
