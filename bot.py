@@ -320,7 +320,17 @@ Respuesta: <code>{resp_text}</code>
 Checked By: {checked_by}
 """
         else:
-            text = f"<b>Repuestaxd</b>\n<code>{result}</code>"
+            text = f"""💳 <b>RESPUESTA</b>
+{result.get('card','')}</code>
+Estado: {estado}
+
+BIN INFO: {binsito[1]} - {binsito[2]} - {binsito[3]}
+COUNTRY: {binsito[4]} {binsito[5]}
+BANK: {binsito[6]}
+
+Respuesta: <code>{resp_text}</code>
+
+Checked By: {checked_by}"""
 
         bot.reply_to(message, text, parse_mode="HTML")
     except Exception as e:
