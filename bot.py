@@ -143,7 +143,7 @@ def claim(message):
         bot.reply_to(message, f"❌ Error: {e}")
 
 # =============================
-#   FUNCIÓN /GEN
+#   FUNCIÓN /GEN (CORREGIDA)
 # =============================
 @bot.message_handler(commands=['gen'])
 def gen(message):
@@ -157,7 +157,7 @@ def gen(message):
         if len(args) < 2:
             return bot.reply_to(message, "❌ Debes especificar un BIN o formato.")
         
-        inputcc = args[1].strip()
+        inputcc = args[1].strip().replace(" ", "").replace("\n", "")
         partes = inputcc.split("|")
 
         cc  = partes[0] if len(partes) > 0 else ""
@@ -165,26 +165,33 @@ def gen(message):
         ano = partes[2] if len(partes) > 2 else "xxxx"
         cvv = partes[3] if len(partes) > 3 else "rnd"
 
-        if len(cc) < 6:
-            return bot.reply_to(message, "❌ BIN incompleto")
-        
-        bin_number = cc[:6]
-        if cc.isdigit():
-            cc = cc[:12]
+        # Validaciones extra
+        if not cc or len(cc) < 6 or not cc.isdigit():
+            return bot.reply_to(message, "❌ BIN inválido o incompleto")
 
+        bin_number = cc[:6]
+        cc = cc[:12]  # limitar a 12 dígitos para generar
+
+        # Validar fecha
         if mes.isdigit() and ano.isdigit():
             if len(ano) == 2: 
                 ano = '20' + ano
-            IST = pytz.timezone('US/Central')
-            now = datetime.datetime.now(IST)
-            if (datetime.datetime.strptime(now.strftime("%m-%Y"), "%m-%Y") > 
-                datetime.datetime.strptime(f'{mes}-{ano}', "%m-%Y")):
-                return bot.reply_to(message, "❌ Fecha incorrecta")
+            try:
+                IST = pytz.timezone('US/Central')
+                now = datetime.datetime.now(IST)
+                fecha_actual = datetime.datetime.strptime(now.strftime("%m-%Y"), "%m-%Y")
+                fecha_input = datetime.datetime.strptime(f'{mes}-{ano}', "%m-%Y")
+                if fecha_actual > fecha_input:
+                    return bot.reply_to(message, "❌ Fecha incorrecta")
+            except Exception:
+                return bot.reply_to(message, "❌ Formato de fecha inválido")
 
+        # Generar tarjetas
         cards = cc_gen(cc, mes, ano, cvv)
         if not cards:
             return bot.reply_to(message, "❌ No se pudo generar tarjetas, revisa el BIN o formato.")
         
+        # Info BIN
         binsito = binlist(bin_number)
         if not binsito[0]:
             binsito = (None, "Unknown", "Unknown", "Unknown", "Unknown", "", "Unknown")
