@@ -8,6 +8,7 @@ from cc_gen import cc_gen  # tu cc_gen.py debe tener las funciones que pasaste
 from datetime import timedelta
 from flask import Flask, request
 import requests
+from sagepay import ccn_gate   # ✅ importamos tu nuevo archivo
 
 # =============================
 #   CONFIG BOT
@@ -204,6 +205,39 @@ def gen(message):
         bot.reply_to(message, text, parse_mode="HTML")
     except Exception as e:
         bot.reply_to(message, f"❌ Error interno: {e}")
+
+# =============================
+#   FUNCIÓN /SG (SAGEPAY)
+# =============================
+@bot.message_handler(commands=['sg'])
+def sg(message):
+    try:
+        userid = str(message.from_user.id)
+
+        if not ver_user(userid):
+            return bot.reply_to(message, '🚫 No estás autorizado, contacta @colale1k.')
+
+        args = message.text.split(" ", 1)
+        if len(args) < 2:
+            return bot.reply_to(message, "❌ Uso correcto: /sg <cc|mm|yyyy|cvv>")
+
+        card = args[1].strip()
+        result = ccn_gate(card)  # ✅ llamada a tu función en sagepay.py
+
+        if isinstance(result, dict):
+            text = f"""
+💳 <b>Resultado Sagepay</b>
+Card: <code>{result.get('card','')}</code>
+Estado: {result.get('status','')}</code>
+Respuesta: {result.get('resp','')}
+"""
+        else:
+            text = f"<b>Respuesta Sagepay</b>\n<code>{result}</code>"
+
+        bot.reply_to(message, text, parse_mode="HTML")
+
+    except Exception as e:
+        bot.reply_to(message, f"❌ Error interno en /sg: {e}")
 
 # =============================
 #   FLASK APP PARA RAILWAY
