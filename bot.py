@@ -4,7 +4,7 @@ import os
 import re
 import pytz 
 import datetime
-from cc_gen import cc_gen  # tu cc_gen.py debe tener las funciones que pasamos antes
+from cc_gen import cc_gen  # tu cc_gen.py debe tener las funciones que pasaste
 from datetime import timedelta
 from flask import Flask, request
 import requests
@@ -143,7 +143,7 @@ def claim(message):
         bot.reply_to(message, f"❌ Error: {e}")
 
 # =============================
-#   FUNCIÓN /GEN (ACTUALIZADA)
+#   FUNCIÓN /GEN
 # =============================
 @bot.message_handler(commands=['gen'])
 def gen(message):
@@ -157,27 +157,40 @@ def gen(message):
         if len(args) < 2:
             return bot.reply_to(message, "❌ Debes especificar un BIN o formato.")
         
-        # Normalizar entrada
-        inputcc = args[1].strip().replace(" ", "").replace("\n", "")
-        inputcc = inputcc.replace("l", "1").replace("L", "1")
+        inputcc = args[1].strip()
+        partes = inputcc.split("|")
 
-        # Pasar directamente a cc_gen (ya maneja todos los formatos)
-        cards = cc_gen(inputcc)
+        cc  = partes[0] if len(partes) > 0 else ""
+        mes = partes[1] if len(partes) > 1 else "xx"
+        ano = partes[2] if len(partes) > 2 else "xxxx"
+        cvv = partes[3] if len(partes) > 3 else "rnd"
+
+        if len(cc) < 6:
+            return bot.reply_to(message, "❌ BIN incompleto")
+        
+        bin_number = cc[:6]
+        if cc.isdigit():
+            cc = cc[:12]
+
+        if mes.isdigit() and ano.isdigit():
+            if len(ano) == 2: 
+                ano = '20' + ano
+            IST = pytz.timezone('US/Central')
+            now = datetime.datetime.now(IST)
+            if (datetime.datetime.strptime(now.strftime("%m-%Y"), "%m-%Y") > 
+                datetime.datetime.strptime(f'{mes}-{ano}', "%m-%Y")):
+                return bot.reply_to(message, "❌ Fecha incorrecta")
+
+        cards = cc_gen(cc, mes, ano, cvv)
         if not cards:
             return bot.reply_to(message, "❌ No se pudo generar tarjetas, revisa el BIN o formato.")
-
-        # Extraer BIN (primeros 6 números encontrados)
-        match = re.search(r"\d{6}", inputcc)
-        bin_number = match.group(0) if match else inputcc[:6]
-
-        # Consultar binlist
+        
         binsito = binlist(bin_number)
         if not binsito[0]:
             binsito = (None, "Unknown", "Unknown", "Unknown", "Unknown", "", "Unknown")
 
-        # Construir respuesta
         text = f"""
-🇩🇴 INSUER GENERADOR🇩🇴
+🇩🇴 DEMON SLAYER GENERATOR 🇩🇴
 ⚙️──────────────⚙️
 """        
         for c in cards:
