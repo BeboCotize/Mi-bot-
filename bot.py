@@ -307,8 +307,8 @@ def sg(message):
             checked_by = f"@{message.from_user.username}" if message.from_user.username else message.from_user.first_name
 
             text = f"""
-💳 <b>Respuesta Sagepay</b>
-Card: <code>{result.get('card','')}</code>
+💳 <b>RESPUESTA</b>
+{result.get('card','')}</code>
 Estado: {estado}
 
 BIN INFO: {binsito[1]} - {binsito[2]} - {binsito[3]}
@@ -320,7 +320,7 @@ Respuesta: <code>{resp_text}</code>
 Checked By: {checked_by}
 """
         else:
-            text = f"<b>Respuesta Sagepay</b>\n<code>{result}</code>"
+            text = f"<b>Repuestaxd</b>\n<code>{result}</code>"
 
         bot.reply_to(message, text, parse_mode="HTML")
     except Exception as e:
