@@ -3,3 +3,4 @@ pytz
 requests
 flask
 faker
+curl_cffi
