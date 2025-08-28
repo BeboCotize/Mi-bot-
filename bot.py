@@ -157,24 +157,29 @@ def gen(message):
         if len(args) < 2:
             return bot.reply_to(message, "❌ Debes especificar un BIN o formato.")
         
-        # Entrada limpia (sin espacios ni saltos de línea)
-        inputcc = args[1].strip().replace(" ", "").replace("\n", "")
+        # 🔹 Normalizar y limpiar la entrada
+        inputcc = args[1].strip()
+        inputcc = inputcc.replace(" ", "|").replace(";", "|").replace(":", "|")
+        while "||" in inputcc:
+            inputcc = inputcc.replace("||", "|")
+        if inputcc.endswith("|"):
+            inputcc = inputcc[:-1]
 
-        # Pasar directamente a cc_gen (tu función ya soporta todos los formatos)
+        # 🔹 Pasar a cc_gen
         cards = cc_gen(inputcc)
         if not cards:
             return bot.reply_to(message, "❌ No se pudo generar tarjetas, revisa el BIN o formato.")
 
-        # Extraer BIN (primeros 6 números encontrados)
+        # 🔹 Extraer BIN
         match = re.search(r"\d{6}", inputcc)
         bin_number = match.group(0) if match else inputcc[:6]
 
-        # Consultar binlist
+        # 🔹 Consultar binlist
         binsito = binlist(bin_number)
         if not binsito[0]:
             binsito = (None, "Unknown", "Unknown", "Unknown", "Unknown", "", "Unknown")
 
-        # Construir respuesta
+        # 🔹 Construir respuesta
         text = f"""
 🇩🇴 INSUER GENERADOR🇩🇴
 ⚙️──────────────⚙️
