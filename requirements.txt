@@ -4,3 +4,4 @@ requests
 flask
 faker
 curl_cffi
+colorama
