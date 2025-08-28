@@ -4,7 +4,7 @@ import os
 import re
 import pytz 
 import datetime
-from cc_gen import cc_gen  # tu cc_gen.py debe tener las funciones que pasaste
+from cc_gen import cc_gen  # tu cc_gen.py debe tener las funciones que pasamos antes
 from datetime import timedelta
 from flask import Flask, request
 import requests
@@ -157,7 +157,7 @@ def gen(message):
         if len(args) < 2:
             return bot.reply_to(message, "❌ Debes especificar un BIN o formato.")
         
-        # Limpiar y normalizar entrada
+        # Normalizar entrada
         inputcc = args[1].strip().replace(" ", "").replace("\n", "")
         inputcc = inputcc.replace("l", "1").replace("L", "1")
 
