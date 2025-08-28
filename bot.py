@@ -9,6 +9,7 @@ from datetime import timedelta
 from flask import Flask, request
 import requests
 from sagepay import ccn_gate   # ✅ importamos tu nuevo archivo
+from telebot import types
 
 # =============================
 #   CONFIG BOT
@@ -77,13 +78,93 @@ def binlist(bin_number: str):
         return (False, None, None, None, None, None, None)
 
 # =============================
-#   COMANDOS
+#   NUEVO /START CON MENÚ
 # =============================
-
 @bot.message_handler(commands=["start"])
 def start(message):
-    bot.reply_to(message, "👋 Bienvenido. Reclama tu key con /claim <key>\n"
-                          "Cuando tengas acceso podrás usar /gen <bin>.")
+    try:
+        chat_id = message.chat.id
+
+        # Cambia esta URL por la imagen que quieras
+        photo_url = "https://i.ibb.co/4W2W8Hq/anime.jpg"
+
+        markup = types.InlineKeyboardMarkup()
+        markup.row(
+            types.InlineKeyboardButton("📂 Gates", callback_data="menu_gates"),
+            types.InlineKeyboardButton("🛠 Tools", callback_data="menu_tools")
+        )
+        markup.row(
+            types.InlineKeyboardButton("❌ Exit", callback_data="menu_exit")
+        )
+
+        bot.send_photo(
+            chat_id,
+            photo=photo_url,
+            caption="👋 Bienvenido a *Demon Slayer Bot*\n\nSelecciona una opción:",
+            parse_mode="Markdown",
+            reply_markup=markup
+        )
+
+    except Exception as e:
+        bot.reply_to(message, f"❌ Error en /start: {e}")
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("menu_"))
+def callback_menu(call):
+    try:
+        if call.data == "menu_gates":
+            text = "📂 *Menú Gates*\n\nAquí irán tus gates disponibles."
+            markup = types.InlineKeyboardMarkup()
+            markup.row(
+                types.InlineKeyboardButton("🔙 Volver", callback_data="menu_back")
+            )
+            bot.edit_message_caption(
+                caption=text,
+                chat_id=call.message.chat.id,
+                message_id=call.message.message_id,
+                parse_mode="Markdown",
+                reply_markup=markup
+            )
+
+        elif call.data == "menu_tools":
+            text = "🛠 *Menú Tools*\n\nAquí estarán tus herramientas."
+            markup = types.InlineKeyboardMarkup()
+            markup.row(
+                types.InlineKeyboardButton("🔙 Volver", callback_data="menu_back")
+            )
+            bot.edit_message_caption(
+                caption=text,
+                chat_id=call.message.chat.id,
+                message_id=call.message.message_id,
+                parse_mode="Markdown",
+                reply_markup=markup
+            )
+
+        elif call.data == "menu_back":
+            markup = types.InlineKeyboardMarkup()
+            markup.row(
+                types.InlineKeyboardButton("📂 Gates", callback_data="menu_gates"),
+                types.InlineKeyboardButton("🛠 Tools", callback_data="menu_tools")
+            )
+            markup.row(
+                types.InlineKeyboardButton("❌ Exit", callback_data="menu_exit")
+            )
+            bot.edit_message_caption(
+                caption="👋 Bienvenido a *Demon Slayer Bot*\n\nSelecciona una opción:",
+                chat_id=call.message.chat.id,
+                message_id=call.message.message_id,
+                parse_mode="Markdown",
+                reply_markup=markup
+            )
+
+        elif call.data == "menu_exit":
+            bot.delete_message(chat_id=call.message.chat.id, message_id=call.message.message_id)
+
+    except Exception as e:
+        bot.answer_callback_query(call.id, f"❌ Error en menú: {e}")
+
+# =============================
+#   COMANDOS EXISTENTES
+# =============================
 
 # Generar key (solo admin)
 @bot.message_handler(commands=["genkey"])
