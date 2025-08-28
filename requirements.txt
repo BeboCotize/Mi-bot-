@@ -5,3 +5,5 @@ flask
 faker
 colorama
 curl_cffi
+requests
+fake-useragent
