@@ -5,16 +5,9 @@ import random
 import string
 from datetime import timedelta
 
-# =============================
-#   RUTAS ARCHIVOS
-# =============================
 KEYS_FILE = "keys.json"
 USERS_FILE = "users.json"
 
-
-# =============================
-#   FUNCIONES AUXILIARES
-# =============================
 
 def load_json(filename):
     if not os.path.exists(filename):
@@ -44,10 +37,6 @@ def save_users(users):
     save_json(USERS_FILE, users)
 
 
-# =============================
-#   FUNCIONES PRINCIPALES
-# =============================
-
 def generate_key(nombre: str, dias: int):
     keys = load_keys()
     key = ''.join(random.choices(string.ascii_letters + string.digits, k=12))
@@ -56,15 +45,15 @@ def generate_key(nombre: str, dias: int):
     keys[key] = {
         "nombre": nombre,
         "expires": expira.isoformat(),
-        "claimed": False
+        "claimed": False,
+        "claimed_by": None
     }
-
     save_keys(keys)
 
     return key, expira
 
 
-def claim_key(user_id: str, key: str):
+def claim_key(user_id: str, username: str, key: str):
     keys = load_keys()
     users = load_users()
 
@@ -80,6 +69,7 @@ def claim_key(user_id: str, key: str):
 
     # ✅ asignamos al usuario
     users[user_id] = {
+        "username": username,
         "key": key,
         "expires": keys[key]["expires"]
     }
@@ -87,9 +77,10 @@ def claim_key(user_id: str, key: str):
 
     # ✅ marcamos como usada
     keys[key]["claimed"] = True
+    keys[key]["claimed_by"] = username
     save_keys(keys)
 
-    return True, "✅ Key aceptada, ya puedes usar /gen y /sg."
+    return True, f"✅ Key aceptada {username}, ya puedes usar /gen y /sg."
 
 
 def list_keys():
@@ -101,11 +92,13 @@ def list_keys():
         expira = datetime.datetime.fromisoformat(v["expires"])
         estado = "✅ Activa"
         if v.get("claimed", False):
-            estado = "⚠️ Usada"
+            estado = f"⚠️ Usada por {v.get('claimed_by', 'Desconocido')}"
         elif expira < now:
             estado = "❌ Expirada"
 
-        lista.append(f"`{k}` - {v['nombre']} - expira {expira.strftime('%Y-%m-%d')} - {estado}")
+        lista.append(
+            f"`{k}` - {v['nombre']} - expira {expira.strftime('%Y-%m-%d')} - {estado}"
+        )
 
     if not lista:
         return "No hay keys registradas."
