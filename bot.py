@@ -290,36 +290,29 @@ def gen(message):
 # =============================
 #   FUNCIÓN /SG (SAGEPAY)
 # =============================
-@bot.message_handler(commands=['sg'])
-def sg(message):
-    try:
-        userid = str(message.from_user.id)
+args = message.text.split(" ", 1)
+if len(args) < 2:
+    return bot.reply_to(message, "❌ Uso correcto: /sg <cc|mm|yyyy|cvv>")
 
-        if not ver_user(userid):
-            return bot.reply_to(message, '🚫 No estás autorizado, contacta @colale1k.')
+card = args[1].strip()
+try:
+    result = ccn_gate(card)  # ✅ llamada a tu función en sagepay.py
 
-        args = message.text.split(" ", 1)
-        if len(args) < 2:
-            return bot.reply_to(message, "❌ Uso correcto: /sg <cc|mm|yyyy|cvv>")
-
-        card = args[1].strip()
-        result = ccn_gate(card)  # ✅ llamada a tu función en sagepay.py
-
-        if isinstance(result, dict):
-            text = f"""
-💳 <b>Resultado Sagepay</b>
-Card: <code>{result.get('card','')}</code>
-Estado: {result.get('status','')}</code>
-Respuesta: {result.get('resp','')}
-"""
+    if isinstance(result, dict):
+        text = f"{result}"
+    else:
+        # Chequea si la respuesta contiene CVV2 MISMATCH|0000N7|
+        if "CVV2 MISMATCH|0000N7|" in str(result):
+            estado = f"✅ Approved\n\n{result}"
         else:
-            text = f"<b>Respuesta Sagepay</b>\n<code>{result}</code>"
+            estado = f"❌ Declined\n\n{result}"
 
-        bot.reply_to(message, text, parse_mode="HTML")
+        text = f"<b>💳 Respuesta Sagepay</b>\n{estado}"
 
-    except Exception as e:
-        bot.reply_to(message, f"❌ Error interno en /sg: {e}")
+    bot.reply_to(message, text, parse_mode="HTML")
 
+except Exception as e:
+    bot.reply_to(message, f"❌ Error interno en /sg: {e}")
 # =============================
 #   FLASK APP PARA RAILWAY
 # =============================
