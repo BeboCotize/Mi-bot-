@@ -85,7 +85,6 @@ def start(message):
     try:
         chat_id = message.chat.id
 
-        # Cambia esta URL por la imagen que quieras
         photo_url = "https://imgur.com/a/ytDQfiM"
 
         markup = types.InlineKeyboardMarkup()
@@ -163,7 +162,7 @@ def callback_menu(call):
         bot.answer_callback_query(call.id, f"❌ Error en menú: {e}")
 
 # =============================
-#   COMANDOS EXISTENTES
+#   COMANDOS KEYS
 # =============================
 
 # Generar key (solo admin)
@@ -186,7 +185,8 @@ def genkey(message):
 
         keys[key] = {
             "nombre": nombre,
-            "expires": expira.isoformat()
+            "expires": expira.isoformat(),
+            "used": False
         }
         save_keys(keys)
 
@@ -194,7 +194,7 @@ def genkey(message):
     except Exception as e:
         bot.reply_to(message, f"❌ Error: {e}")
 
-# Reclamar key
+# Reclamar key (solo una vez por key)
 @bot.message_handler(commands=["claim"])
 def claim(message):
     try:
@@ -210,15 +210,23 @@ def claim(message):
         if key not in keys:
             return bot.reply_to(message, "🚫 Key inválida.")
 
+        if keys[key].get("used", False):
+            return bot.reply_to(message, "🚫 Esa key ya fue canjeada.")
+
         expira = datetime.datetime.fromisoformat(keys[key]["expires"])
         if expira < datetime.datetime.now():
             return bot.reply_to(message, "🚫 Esa key ya expiró.")
 
+        # Guardar usuario con esa key
         users[user_id] = {
             "key": key,
             "expires": keys[key]["expires"]
         }
         save_users(users)
+
+        # Marcar key como usada
+        keys[key]["used"] = True
+        save_keys(keys)
 
         bot.reply_to(message, "✅ Key aceptada, ya puedes usar /gen.")
     except Exception as e:
@@ -290,9 +298,6 @@ def gen(message):
 # =============================
 #   FUNCIÓN /SG (SAGEPAY)
 # =============================
-# =============================
-#   FUNCIÓN /SG (SAGEPAY)
-# =============================
 @bot.message_handler(commands=['sg'])
 def sagepay_cmd(message):
     try:
@@ -313,16 +318,13 @@ def sagepay_cmd(message):
         ano = partes[2] if len(partes) > 2 else ""
         cvv = partes[3] if len(partes) > 3 else ""
 
-        # Extraer BIN y consultar info
         bin_number = cc[:6]
         binsito = binlist(bin_number)
         if not binsito[0]:
             binsito = (None, "Unknown", "Unknown", "Unknown", "Unknown", "", "Unknown")
 
-        # Llamada a tu función en sagepay.py
         result = ccn_gate(card)
 
-        # Revisar si está aprobado
         if "CVV2 MISMATCH|0000N7|" in str(result) or "Approved" in str(result):
             estado = "✅ Approved"
         else:
@@ -331,7 +333,6 @@ def sagepay_cmd(message):
         text = f"""
 {estado}
 Card: <code>{card}</code>
-
 
 𝗕𝗜𝗡 𝗜𝗡𝗙𝗢: {binsito[1]} - {binsito[2]} - {binsito[3]}
 𝗖𝗢𝗨𝗡𝗧𝗥𝗬: {binsito[4]} {binsito[5]}
@@ -345,6 +346,7 @@ Checked by: @{message.from_user.username or message.from_user.id}
 
     except Exception as e:
         bot.reply_to(message, f"❌ Error interno en /sg: {e}")
+
 # =============================
 #   FLASK APP PARA RAILWAY
 # =============================
