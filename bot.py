@@ -10,6 +10,8 @@ from flask import Flask, request
 import requests
 from sagepay import ccn_gate   # ✅ importamos tu nuevo archivo
 from telebot import types
+from keys import generate_key, claim_key, list_keys
+
 
 # =============================
 #   CONFIG BOT
@@ -152,9 +154,6 @@ def callback_menu(call):
 # =============================
 #   KEYS SYSTEM
 # =============================
-from telebot import TeleBot
-from keys import generate_key, claim_key, list_keys
-
 
 @bot.message_handler(commands=["genkey"])
 def genkey_cmd(message):
