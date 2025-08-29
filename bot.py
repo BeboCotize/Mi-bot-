@@ -290,29 +290,62 @@ def gen(message):
 # =============================
 #   FUNCIÓN /SG (SAGEPAY)
 # =============================
-args = message.text.split(" ", 1)
-if len(args) < 2:
-    return bot.reply_to(message, "❌ Uso correcto: /sg <cc|mm|yyyy|cvv>")
+# =============================
+#   FUNCIÓN /SG (SAGEPAY)
+# =============================
+@bot.message_handler(commands=['sg'])
+def sagepay_cmd(message):
+    try:
+        userid = str(message.from_user.id)
 
-card = args[1].strip()
-try:
-    result = ccn_gate(card)  # ✅ llamada a tu función en sagepay.py
+        if not ver_user(userid):
+            return bot.reply_to(message, '🚫 No estás autorizado, contacta @colale1k.')
 
-    if isinstance(result, dict):
-        text = f"{result}"
-    else:
-        # Chequea si la respuesta contiene CVV2 MISMATCH|0000N7|
-        if "CVV2 MISMATCH|0000N7|" in str(result):
-            estado = f"✅ Approved\n\n{result}"
+        args = message.text.split(" ", 1)
+        if len(args) < 2:
+            return bot.reply_to(message, "❌ Uso correcto: /sg <cc|mm|yyyy|cvv>")
+
+        card = args[1].strip()
+        partes = card.split("|")
+
+        cc  = partes[0] if len(partes) > 0 else ""
+        mes = partes[1] if len(partes) > 1 else ""
+        ano = partes[2] if len(partes) > 2 else ""
+        cvv = partes[3] if len(partes) > 3 else ""
+
+        # Extraer BIN y consultar info
+        bin_number = cc[:6]
+        binsito = binlist(bin_number)
+        if not binsito[0]:
+            binsito = (None, "Unknown", "Unknown", "Unknown", "Unknown", "", "Unknown")
+
+        # Llamada a tu función en sagepay.py
+        result = ccn_gate(card)
+
+        # Revisar si está aprobado
+        if "CVV2 MISMATCH|0000N7|" in str(result) or "Approved" in str(result):
+            estado = "✅ Approved"
         else:
-            estado = f"❌ Declined\n\n{result}"
+            estado = "❌ Declined"
 
-        text = f"<b>💳 Respuesta Sagepay</b>\n{estado}"
+        text = f"""
+<b>💳 Respuesta Sagepay</b>
 
-    bot.reply_to(message, text, parse_mode="HTML")
+Card: <code>{card}</code>
+Estado: {estado}
 
-except Exception as e:
-    bot.reply_to(message, f"❌ Error interno en /sg: {e}")
+𝗕𝗜𝗡 𝗜𝗡𝗙𝗢: {binsito[1]} - {binsito[2]} - {binsito[3]}
+𝗖𝗢𝗨𝗡𝗧𝗥𝗬: {binsito[4]} {binsito[5]}
+𝗕𝗔𝗡𝗞: {binsito[6]}
+
+<b>Respuesta:</b> <code>{result}</code>
+
+Checked by: @{message.from_user.username or message.from_user.id}
+"""
+        bot.reply_to(message, text, parse_mode="HTML")
+
+    except Exception as e:
+        bot.reply_to(message, f"❌ Error interno en /sg: {e}")
 # =============================
 #   FLASK APP PARA RAILWAY
 # =============================
