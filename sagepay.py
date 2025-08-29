@@ -93,7 +93,7 @@ def ccn_gate(card):
             elif "CVV2 MISMATCH" in message_text:
                 save_html = open('page.html', 'w+', encoding="utf-8")
                 save_html.write(result.text)
-                return Fore.GREEN + f"{card}{message_text}|{message_code}|"
+                return Fore.GREEN + f"{card}|approved|{message_text}|{message_code}|"
 
             return Fore.RED + f"{card}|{message_text}|{message_code}|"
         except Exception as e:
