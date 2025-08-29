@@ -329,10 +329,9 @@ def sagepay_cmd(message):
             estado = "❌ Declined"
 
         text = f"""
-<b>💳 Respuesta Sagepay</b>
-
+{estado}
 Card: <code>{card}</code>
-Estado: {estado}
+
 
 𝗕𝗜𝗡 𝗜𝗡𝗙𝗢: {binsito[1]} - {binsito[2]} - {binsito[3]}
 𝗖𝗢𝗨𝗡𝗧𝗥𝗬: {binsito[4]} {binsito[5]}
