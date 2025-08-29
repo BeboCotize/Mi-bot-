@@ -218,16 +218,6 @@ def listkeys_cmd(message):
 #   (el resto de tu código sigue igual)
 # =============================
 
-
-@bot.message_handler(commands=["keys"])
-def listkeys_cmd(message):
-    if message.from_user.id != ADMIN_ID:
-        return bot.reply_to(message, "🚫 No tienes permiso.")
-
-    msg = list_keys()
-    bot.reply_to(message, msg)
-
-
 # =============================
 #   FUNCIÓN /GEN
 # =============================
