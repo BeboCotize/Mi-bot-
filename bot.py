@@ -152,66 +152,54 @@ def callback_menu(call):
 # =============================
 #   KEYS SYSTEM
 # =============================
+from telebot import TeleBot
+from keys import generate_key, claim_key, list_keys
+
+
 @bot.message_handler(commands=["genkey"])
-def genkey(message):
+def genkey_cmd(message):
+    if message.from_user.id != ADMIN_ID:
+        return bot.reply_to(message, "🚫 No tienes permiso.")
+
+    args = message.text.split()
+    if len(args) < 3:
+        return bot.reply_to(message, "Uso: /genkey <nombre> <días>")
+
+    nombre = args[1]
     try:
-        if message.from_user.id != ADMIN_ID:
-            return bot.reply_to(message, "🚫 No tienes permiso para usar este comando.")
-
-        args = message.text.split()
-        if len(args) < 3:
-            return bot.reply_to(message, "Uso: /genkey <nombre> <días>")
-
-        nombre = args[1]
         dias = int(args[2])
-        keys = load_keys()
+    except ValueError:
+        return bot.reply_to(message, "🚫 Días debe ser un número.")
 
-        import random, string
-        key = ''.join(random.choices(string.ascii_letters + string.digits, k=12))
-        expira = datetime.datetime.now() + timedelta(days=dias)
+    key, expira = generate_key(nombre, dias)
+    bot.reply_to(
+        message,
+        f"✅ Key generada:\n\n`{key}`\nExpira: {expira.strftime('%Y-%m-%d %H:%M:%S')}"
+    )
 
-        keys[key] = {
-            "nombre": nombre,
-            "expires": expira.isoformat()
-        }
-        save_keys(keys)
-
-        bot.reply_to(
-            message,
-            f"✅ Key generada:\n\n`{key}`\nExpira: {expira}",
-            parse_mode="Markdown"
-        )
-    except Exception as e:
-        bot.reply_to(message, f"❌ Error: {e}")
 
 @bot.message_handler(commands=["claim"])
-def claim(message):
-    try:
-        args = message.text.split()
-        if len(args) < 2:
-            return bot.reply_to(message, "Uso: /claim <key>")
+def claim_cmd(message):
+    args = message.text.split()
+    if len(args) < 2:
+        return bot.reply_to(message, "Uso: /claim <key>")
 
-        key = args[1]
-        keys = load_keys()
-        users = load_users()
-        user_id = str(message.from_user.id)
+    key = args[1]
+    user_id = str(message.from_user.id)
+    username = f"@{message.from_user.username}" if message.from_user.username else message.from_user.first_name
 
-        if key not in keys:
-            return bot.reply_to(message, "🚫 Key inválida.")
+    ok, msg = claim_key(user_id, username, key)
+    bot.reply_to(message, msg)
 
-        expira = datetime.datetime.fromisoformat(keys[key]["expires"])
-        if expira < datetime.datetime.now():
-            return bot.reply_to(message, "🚫 Esa key ya expiró.")
 
-        users[user_id] = {
-            "key": key,
-            "expires": keys[key]["expires"]
-        }
-        save_users(users)
+@bot.message_handler(commands=["keys"])
+def listkeys_cmd(message):
+    if message.from_user.id != ADMIN_ID:
+        return bot.reply_to(message, "🚫 No tienes permiso.")
 
-        bot.reply_to(message, "✅ Key aceptada, ya puedes usar /gen.")
-    except Exception as e:
-        bot.reply_to(message, f"❌ Error: {e}")
+    msg = list_keys()
+    bot.reply_to(message, msg)
+
 
 # =============================
 #   FUNCIÓN /GEN
