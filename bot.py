@@ -5,63 +5,148 @@ import re
 import pytz 
 import datetime
 from cc_gen import cc_gen  # tu cc_gen.py debe tener las funciones que pasaste
-from datetime import timedelta
+from datetime import timedelta, datetime
 from flask import Flask, request
 import requests
 from sagepay import ccn_gate   # ✅ importamos tu nuevo archivo
 from telebot import types
-from keys import generate_key, claim_key, list_keys
-
+import random
 
 # =============================
 #   CONFIG BOT
 # =============================
 TOKEN = os.getenv("BOT_TOKEN")
 URL = os.getenv("APP_URL")  # ej: https://mi-bot-production.up.railway.app
-ADMIN_ID = int(os.getenv("ADMIN_ID", "6629555218"))  # tu ID de admin fijo
+ADMIN_ID = os.getenv("ADMIN_ID", "6629555218")  # ⚠️ se mantiene como string
 bot = telebot.TeleBot(TOKEN)
 
 USERS_FILE = "users.json"
 KEYS_FILE = "keys.json"
 
- 
+
 # =============================
 #   HELPERS JSON
 # =============================
-
-def load_json(file):
-    if not os.path.exists(file):
-        return {}
-    with open(file, "r") as f:
-        return json.load(f)
-
-def save_json(file, data):
-    with open(file, "w") as f:
-        json.dump(data, f, indent=4)
-
-def load_users():
-    return load_json(USERS_FILE)
-
-def save_users(users):
-    save_json(USERS_FILE, users)
-
 def load_keys():
-    return load_json(KEYS_FILE)
+    try:
+        with open("keys.json", "r") as f:
+            return json.load(f)
+    except:
+        return {}
 
 def save_keys(keys):
-    save_json(KEYS_FILE, keys)
+    with open("keys.json", "w") as f:
+        json.dump(keys, f, indent=4)
 
-def ver_user(user_id: str):
-    """Verifica si el usuario tiene key válida"""
-    users = load_users()
-    if user_id not in users:
-        return False
-    expira = datetime.datetime.fromisoformat(users[user_id]["expires"])
-    return expira > datetime.datetime.now()
+def load_users():
+    try:
+        with open("users.json", "r") as f:
+            return json.load(f)
+    except:
+        return {}
+
+def save_users(users):
+    with open("users.json", "w") as f:
+        json.dump(users, f, indent=4)
 
 
 # =============================
-#   COMANDO /MYINFO
+#   START
+# =============================
+@bot.message_handler(commands=['start'])
+def start(message):
+    markup = telebot.types.InlineKeyboardMarkup()
+    markup.row(telebot.types.InlineKeyboardButton("📂 Gates", callback_data="gates"),
+               telebot.types.InlineKeyboardButton("🛠 Tools", callback_data="tools"))
+    markup.row(telebot.types.InlineKeyboardButton("❌ Exit", callback_data="exit"))
+
+    bot.send_photo(
+        message.chat.id,
+        "https://i.imgur.com/ExdKOOz.png",
+        caption="👋 Bienvenido a Demon Slayer Bot\n\nSelecciona una opción:",
+        reply_markup=markup
+    )
+
+
+# =============================
+#   GENKEY (solo admin)
+# =============================
+@bot.message_handler(commands=['genkey'])
+def genkey_handler(message):
+    user_id = str(message.from_user.id)
+    if user_id != ADMIN_ID:
+        bot.reply_to(message, "⛔ No tienes permiso para usar este comando.")
+        return
+
+    try:
+        args = message.text.split()[1:]
+        if len(args) != 1:
+            bot.reply_to(message, "Uso: /genkey <días>")
+            return
+
+        dias = int(args[0])
+        nombre = "Demon"
+        key = f"{nombre}{random.randint(1000,9999)}"
+        expira = (datetime.now() + timedelta(days=dias)).strftime("%Y-%m-%d %H:%M:%S")
+
+        keys = load_keys()
+        keys[key] = {"dias": dias, "expira": expira}
+        save_keys(keys)
+
+        bot.reply_to(message, f"✅ Key generada:\n\n🔑 {key}\n📅 Expira: {expira}")
+
+    except Exception as e:
+        bot.reply_to(message, f"❌ Error interno: {e}")
+
+
+# =============================
+#   CLAIM KEY
+# =============================
+@bot.message_handler(commands=['claim'])
+def claim(message):
+    try:
+        args = message.text.split()[1:]
+        if len(args) != 1:
+            bot.reply_to(message, "Uso: /claim <key>")
+            return
+
+        key = args[0]
+        keys = load_keys()
+        users = load_users()
+        user_id = str(message.from_user.id)
+
+        if key not in keys:
+            bot.reply_to(message, "❌ Key inválida.")
+            return
+
+        expira_str = keys[key]["expira"]
+        expira_dt = datetime.fromisoformat(expira_str)
+
+        if expira_dt < datetime.now():
+            bot.reply_to(message, "⏳ Esta key ya expiró.")
+            return
+
+        users[user_id] = {
+            "username": message.from_user.username or "SinUsername",
+            "key": key,
+            "expires": expira_str
+        }
+        save_users(users)
+
+        del keys[key]
+        save_keys(keys)
+
+        bot.reply_to(
+            message,
+            f"✅ Key reclamada con éxito.\n\n👤 Usuario: @{message.from_user.username}\n🔑 Key: {key}\n📅 Expira: {expira_str}"
+        )
+
+    except Exception as e:
+        bot.reply_to(message, f"❌ Error interno: {e}")
+
+
+# =============================
+#   MYINFO
 # =============================
 @bot.message_handler(commands=['myinfo'])
 def myinfo(message):
@@ -78,17 +163,16 @@ def myinfo(message):
     expires = data["expires"]
 
     try:
-        expira_dt = datetime.datetime.fromisoformat(expires)
+        expira_dt = datetime.fromisoformat(expires)
         expira_str = expira_dt.strftime("%Y-%m-%d %H:%M:%S")
     except:
         expira_dt = None
         expira_str = expires
 
-    # Verificar si expiró
-    if expira_dt and expira_dt < datetime.datetime.now():
+    if expira_dt and expira_dt < datetime.now():
         bot.reply_to(
             message,
-            f"👤 Usuario: {username}\n"
+            f"👤 Usuario: @{username}\n"
             f"🔑 Key: {key}\n"
             f"⏳ Expiró el: {expira_str}\n\n"
             f"⚠️ Tu key ha expirado, reclama una nueva."
@@ -96,7 +180,7 @@ def myinfo(message):
     else:
         bot.reply_to(
             message,
-            f"👤 Usuario: {username}\n"
+            f"👤 Usuario: @{username}\n"
             f"🔑 Key: {key}\n"
             f"⏳ Expira: {expira_str}\n\n"
             f"✅ Tu key sigue activa."
@@ -104,114 +188,24 @@ def myinfo(message):
 
 
 # =============================
-#   BINLIST LOOKUP (ANTIPUBLIC)
+#   LISTKEYS (solo admin)
 # =============================
-def binlist(bin_number: str):
-    try:
-        r = requests.get(f"https://bins.antipublic.cc/bins/{bin_number}")
-        if r.status_code == 200:
-            data = r.json()
-            brand = data.get("scheme", "Unknown").upper()
-            tipo = data.get("type", "Unknown").upper()
-            level = data.get("brand", "Unknown").upper()
-            country_name = data.get("country_name", "Unknown")
-            flag = data.get("country_flag", "")
-            bank = data.get("bank", "Unknown")
-            return (True, brand, tipo, level, country_name, flag, bank)
-        else:
-            return (False, None, None, None, None, None, None)
-    except Exception:
-        return (False, None, None, None, None, None, None)
+@bot.message_handler(commands=['listkeys'])
+def listkeys(message):
+    if str(message.from_user.id) != ADMIN_ID:
+        bot.reply_to(message, "⛔ No tienes permiso para usar este comando.")
+        return
 
-
-# =============================
-#   NUEVO /START CON MENÚ
-# =============================
-@bot.message_handler(commands=["start"])
-def start(message):
-    try:
-        chat_id = message.chat.id
-        photo_url = "https://i.imgur.com/ytDQfiM.png"  # imagen fija
-        markup = types.InlineKeyboardMarkup()
-        markup.row(
-            types.InlineKeyboardButton("📂 Gates", callback_data="menu_gates"),
-            types.InlineKeyboardButton("🛠 Tools", callback_data="menu_tools")
-        )
-        markup.row(
-            types.InlineKeyboardButton("❌ Exit", callback_data="menu_exit")
-        )
-        bot.send_photo(
-            chat_id,
-            photo=photo_url,
-            caption="👋 Bienvenido a *Demon Slayer Bot*\n\nSelecciona una opción:",
-            parse_mode="Markdown",
-            reply_markup=markup
-        )
-    except Exception as e:
-        bot.reply_to(message, f"❌ Error en /start: {e}")
-
-
-# =============================
-#   KEYS SYSTEM
-# =============================
-import random
-import string
-
-@bot.message_handler(commands=["genkey"])
-def genkey_cmd(message):
-    if message.from_user.id != ADMIN_ID:
-        return bot.reply_to(message, "🚫 No tienes permiso.")
-
-    args = message.text.split()
-    if len(args) < 2:
-        return bot.reply_to(message, "Uso: /genkey <días>")
-
-    try:
-        dias = int(args[1])
-    except ValueError:
-        return bot.reply_to(message, "🚫 Días debe ser un número.")
-
-    # Generar key con prefijo Demon
-    sufijo = ''.join(random.choices(string.ascii_letters + string.digits, k=6))
-    key_name = f"Demon{sufijo}"
-
-    # Guardar usando keys.py
-    key, expira = generate_key(key_name, dias)
-
-    bot.reply_to(
-        message,
-        f"✅ Key generada:\n\n`{key}`\n⏳ Expira: {expira.strftime('%Y-%m-%d %H:%M:%S')}",
-        parse_mode="Markdown"
-    )
-
-
-@bot.message_handler(commands=["claim"])
-def claim_cmd(message):
-    args = message.text.split()
-    if len(args) < 2:
-        return bot.reply_to(message, "Uso: /claim <key>")
-
-    key = args[1]
-    user_id = str(message.from_user.id)
-    username = message.from_user.username or message.from_user.first_name
-
-    ok, msg = claim_key(user_id, username, key)
-    bot.reply_to(message, msg)
-
-
-@bot.message_handler(commands=["listkeys"])
-def listkeys_cmd(message):
-    if message.from_user.id != ADMIN_ID:
-        return bot.reply_to(message, "🚫 No tienes permiso.")
-
-    keys = list_keys()
+    keys = load_keys()
     if not keys:
-        return bot.reply_to(message, "📂 No hay keys generadas.")
+        bot.reply_to(message, "📂 No hay keys disponibles.")
+        return
 
-    texto = "🔑 *Keys disponibles:*\n\n"
+    text = "🔑 Keys disponibles:\n\n"
     for k, v in keys.items():
-        texto += f"- `{k}` → expira {v['expires']}\n"
-    bot.reply_to(message, texto, parse_mode="Markdown")
+        text += f"• {k} → Expira: {v['expira']}\n"
+
+    bot.reply_to(message, text, parse_mode="Markdown")
 
 
 # =============================
@@ -219,21 +213,21 @@ def listkeys_cmd(message):
 # =============================
 
 # =============================
-#   FUNCIÓN /GEN
-# =============================
 @bot.message_handler(commands=['gen'])
 def gen(message):
     try:
         userid = str(message.from_user.id)
+        
         if not ver_user(userid):
             return bot.reply_to(message, '🚫 No estás autorizado, contacta @colale1k.')
-
+        
         args = message.text.split(" ", 1)
         if len(args) < 2:
             return bot.reply_to(message, "❌ Debes especificar un BIN o formato.")
-
+        
         inputcc = args[1].strip()
         partes = inputcc.split("|")
+
         cc  = partes[0] if len(partes) > 0 else ""
         mes = partes[1] if len(partes) > 1 else "xx"
         ano = partes[2] if len(partes) > 2 else "xxxx"
@@ -241,7 +235,7 @@ def gen(message):
 
         if len(cc) < 6:
             return bot.reply_to(message, "❌ BIN incompleto")
-
+        
         bin_number = cc[:6]
         if cc.isdigit():
             cc = cc[:12]
@@ -258,7 +252,7 @@ def gen(message):
         cards = cc_gen(cc, mes, ano, cvv)
         if not cards:
             return bot.reply_to(message, "❌ No se pudo generar tarjetas, revisa el BIN o formato.")
-
+        
         binsito = binlist(bin_number)
         if not binsito[0]:
             binsito = (None, "Unknown", "Unknown", "Unknown", "Unknown", "", "Unknown")
@@ -269,6 +263,7 @@ def gen(message):
 """        
         for c in cards:
             text += f"<code>{c.strip()}</code>\n"
+
         text += f"""
 𝗕𝗜𝗡 𝗜𝗡𝗙𝗢: {binsito[1]} - {binsito[2]} - {binsito[3]}
 𝗖𝗢𝗨𝗡𝗧𝗥𝗬: {binsito[4]} {binsito[5]}
@@ -285,6 +280,7 @@ def gen(message):
 def sagepay_cmd(message):
     try:
         userid = str(message.from_user.id)
+
         if not ver_user(userid):
             return bot.reply_to(message, '🚫 No estás autorizado, contacta @colale1k.')
 
@@ -294,18 +290,22 @@ def sagepay_cmd(message):
 
         card = args[1].strip()
         partes = card.split("|")
+
         cc  = partes[0] if len(partes) > 0 else ""
         mes = partes[1] if len(partes) > 1 else ""
         ano = partes[2] if len(partes) > 2 else ""
         cvv = partes[3] if len(partes) > 3 else ""
 
+        # Extraer BIN y consultar info
         bin_number = cc[:6]
         binsito = binlist(bin_number)
         if not binsito[0]:
             binsito = (None, "Unknown", "Unknown", "Unknown", "Unknown", "", "Unknown")
 
+        # Llamada a tu función en sagepay.py
         result = ccn_gate(card)
 
+        # Revisar si está aprobado
         if "CVV2 MISMATCH|0000N7|" in str(result) or "Approved" in str(result):
             estado = "✅ Approved"
         else:
@@ -314,13 +314,18 @@ def sagepay_cmd(message):
         text = f"""
 {estado}
 Card: <code>{card}</code>
+
+
 𝗕𝗜𝗡 𝗜𝗡𝗙𝗢: {binsito[1]} - {binsito[2]} - {binsito[3]}
 𝗖𝗢𝗨𝗡𝗧𝗥𝗬: {binsito[4]} {binsito[5]}
 𝗕𝗔𝗡𝗞: {binsito[6]}
+
 <b>Respuesta:</b> <code>{result}</code>
+
 Checked by: @{message.from_user.username or message.from_user.id}
 """
         bot.reply_to(message, text, parse_mode="HTML")
+
     except Exception as e:
         bot.reply_to(message, f"❌ Error interno en /sg: {e}")
 
@@ -339,6 +344,7 @@ def webhook():
 @app.route("/")
 def home():
     return "🤖 Bot funcionando en Railway!", 200
+
 
 # =============================
 #   MAIN
