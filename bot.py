@@ -24,8 +24,9 @@ bot = telebot.TeleBot(TOKEN)
 USERS_FILE = "users.json"
 KEYS_FILE = "keys.json"
 
+ 
 # =============================
-#   HELPERS
+#   HELPERS JSON
 # =============================
 def load_json(file):
     if not os.path.exists(file):
@@ -56,6 +57,63 @@ def ver_user(user_id: str):
         return False
     expira = datetime.datetime.fromisoformat(users[user_id]["expires"])
     return expira > datetime.datetime.now()
+
+# =============================
+#   COMANDO /MYINFO
+# =============================
+@bot.message_handler(commands=['myinfo'])
+def myinfo(message):
+    user_id = str(message.from_user.id)
+    users = load_users()
+
+    if user_id not in users:
+        bot.reply_to(message, "❌ No has reclamado ninguna key todavía.")
+        return
+
+    data = users[user_id]
+    username = data["username"]
+    key = data["key"]
+    expires = data["expires"]
+
+    try:
+        expira_dt = datetime.datetime.fromisoformat(expires)
+        expira_str = expira_dt.strftime("%Y-%m-%d %H:%M:%S")
+    except:
+        expira_dt = None
+        expira_str = expires
+
+    # Verificar si expiró
+    if expira_dt and expira_dt < datetime.datetime.now():
+        bot.reply_to(
+            message,
+            f"👤 Usuario: {username}\n"
+            f"🔑 Key: {key}\n"
+            f"⏳ Expiró el: {expira_str}\n\n"
+            f"⚠️ Tu key ha expirado, reclama una nueva."
+        )
+    else:
+        bot.reply_to(
+            message,
+            f"👤 Usuario: {username}\n"
+            f"🔑 Key: {key}\n"
+            f"⏳ Expira: {expira_str}\n\n"
+            f"✅ Tu key sigue activa."
+        )
+
+# =============================
+#   COMANDO /LISTKEYS (solo admin)
+# =============================
+@bot.message_handler(commands=['listkeys'])
+def cmd_listkeys(message):
+    if str(message.from_user.id) != str(ADMIN_ID):
+        bot.reply_to(message, "❌ No tienes permiso para usar este comando.")
+        return
+    keys = list_keys()
+    if not keys:
+        bot.reply_to(message, "⚠️ No hay keys registradas.")
+    else:
+        resp = "🔑 *Listado de Keys:*\n\n" + "\n".join(keys)
+        bot.reply_to(message, resp, parse_mode="Markdown")
 
 # =============================
 #   BINLIST LOOKUP (ANTIPUBLIC)
@@ -103,6 +161,10 @@ def start(message):
     except Exception as e:
         bot.reply_to(message, f"❌ Error en /start: {e}")
 
+# =============================
+#   (AQUÍ SIGUE TU CÓDIGO ORIGINAL)
+# =============================
+# Ejemplo: otros handlers, gates, tools, etc.
 @bot.callback_query_handler(func=lambda call: call.data.startswith("menu_"))
 def callback_menu(call):
     try:
