@@ -17,7 +17,6 @@ from telebot import types
 TOKEN = os.getenv("BOT_TOKEN")
 URL = os.getenv("APP_URL")  # ej: https://mi-bot-production.up.railway.app
 ADMIN_ID = int(os.getenv("ADMIN_ID", "6629555218"))  # tu ID de admin fijo
-
 bot = telebot.TeleBot(TOKEN)
 
 USERS_FILE = "users.json"
@@ -26,7 +25,6 @@ KEYS_FILE = "keys.json"
 # =============================
 #   HELPERS
 # =============================
-
 def load_json(file):
     if not os.path.exists(file):
         return {}
@@ -84,9 +82,7 @@ def binlist(bin_number: str):
 def start(message):
     try:
         chat_id = message.chat.id
-
-        photo_url = "https://imgur.com/a/ytDQfiM"
-
+        photo_url = "https://i.imgur.com/ytDQfiM.png"  # imagen fija
         markup = types.InlineKeyboardMarkup()
         markup.row(
             types.InlineKeyboardButton("📂 Gates", callback_data="menu_gates"),
@@ -95,7 +91,6 @@ def start(message):
         markup.row(
             types.InlineKeyboardButton("❌ Exit", callback_data="menu_exit")
         )
-
         bot.send_photo(
             chat_id,
             photo=photo_url,
@@ -103,7 +98,6 @@ def start(message):
             parse_mode="Markdown",
             reply_markup=markup
         )
-
     except Exception as e:
         bot.reply_to(message, f"❌ Error en /start: {e}")
 
@@ -113,9 +107,7 @@ def callback_menu(call):
         if call.data == "menu_gates":
             text = "📂 *Menú Gates*\n\nAquí irán tus gates disponibles."
             markup = types.InlineKeyboardMarkup()
-            markup.row(
-                types.InlineKeyboardButton("🔙 Volver", callback_data="menu_back")
-            )
+            markup.row(types.InlineKeyboardButton("🔙 Volver", callback_data="menu_back"))
             bot.edit_message_caption(
                 caption=text,
                 chat_id=call.message.chat.id,
@@ -127,9 +119,7 @@ def callback_menu(call):
         elif call.data == "menu_tools":
             text = "🛠 *Menú Tools*\n\nAquí estarán tus herramientas."
             markup = types.InlineKeyboardMarkup()
-            markup.row(
-                types.InlineKeyboardButton("🔙 Volver", callback_data="menu_back")
-            )
+            markup.row(types.InlineKeyboardButton("🔙 Volver", callback_data="menu_back"))
             bot.edit_message_caption(
                 caption=text,
                 chat_id=call.message.chat.id,
@@ -144,9 +134,7 @@ def callback_menu(call):
                 types.InlineKeyboardButton("📂 Gates", callback_data="menu_gates"),
                 types.InlineKeyboardButton("🛠 Tools", callback_data="menu_tools")
             )
-            markup.row(
-                types.InlineKeyboardButton("❌ Exit", callback_data="menu_exit")
-            )
+            markup.row(types.InlineKeyboardButton("❌ Exit", callback_data="menu_exit"))
             bot.edit_message_caption(
                 caption="👋 Bienvenido a *Demon Slayer Bot*\n\nSelecciona una opción:",
                 chat_id=call.message.chat.id,
@@ -162,10 +150,8 @@ def callback_menu(call):
         bot.answer_callback_query(call.id, f"❌ Error en menú: {e}")
 
 # =============================
-#   COMANDOS KEYS
+#   KEYS SYSTEM
 # =============================
-
-# Generar key (solo admin)
 @bot.message_handler(commands=["genkey"])
 def genkey(message):
     try:
@@ -175,26 +161,29 @@ def genkey(message):
         args = message.text.split()
         if len(args) < 3:
             return bot.reply_to(message, "Uso: /genkey <nombre> <días>")
+
         nombre = args[1]
         dias = int(args[2])
-
         keys = load_keys()
+
         import random, string
         key = ''.join(random.choices(string.ascii_letters + string.digits, k=12))
         expira = datetime.datetime.now() + timedelta(days=dias)
 
         keys[key] = {
             "nombre": nombre,
-            "expires": expira.isoformat(),
-            "used": False
+            "expires": expira.isoformat()
         }
         save_keys(keys)
 
-        bot.reply_to(message, f"✅ Key generada:\n\n`{key}`\nExpira: {expira}", parse_mode="Markdown")
+        bot.reply_to(
+            message,
+            f"✅ Key generada:\n\n`{key}`\nExpira: {expira}",
+            parse_mode="Markdown"
+        )
     except Exception as e:
         bot.reply_to(message, f"❌ Error: {e}")
 
-# Reclamar key (solo una vez por key)
 @bot.message_handler(commands=["claim"])
 def claim(message):
     try:
@@ -210,23 +199,15 @@ def claim(message):
         if key not in keys:
             return bot.reply_to(message, "🚫 Key inválida.")
 
-        if keys[key].get("used", False):
-            return bot.reply_to(message, "🚫 Esa key ya fue canjeada.")
-
         expira = datetime.datetime.fromisoformat(keys[key]["expires"])
         if expira < datetime.datetime.now():
             return bot.reply_to(message, "🚫 Esa key ya expiró.")
 
-        # Guardar usuario con esa key
         users[user_id] = {
             "key": key,
             "expires": keys[key]["expires"]
         }
         save_users(users)
-
-        # Marcar key como usada
-        keys[key]["used"] = True
-        save_keys(keys)
 
         bot.reply_to(message, "✅ Key aceptada, ya puedes usar /gen.")
     except Exception as e:
@@ -239,17 +220,15 @@ def claim(message):
 def gen(message):
     try:
         userid = str(message.from_user.id)
-        
         if not ver_user(userid):
             return bot.reply_to(message, '🚫 No estás autorizado, contacta @colale1k.')
-        
+
         args = message.text.split(" ", 1)
         if len(args) < 2:
             return bot.reply_to(message, "❌ Debes especificar un BIN o formato.")
-        
+
         inputcc = args[1].strip()
         partes = inputcc.split("|")
-
         cc  = partes[0] if len(partes) > 0 else ""
         mes = partes[1] if len(partes) > 1 else "xx"
         ano = partes[2] if len(partes) > 2 else "xxxx"
@@ -257,7 +236,7 @@ def gen(message):
 
         if len(cc) < 6:
             return bot.reply_to(message, "❌ BIN incompleto")
-        
+
         bin_number = cc[:6]
         if cc.isdigit():
             cc = cc[:12]
@@ -274,7 +253,7 @@ def gen(message):
         cards = cc_gen(cc, mes, ano, cvv)
         if not cards:
             return bot.reply_to(message, "❌ No se pudo generar tarjetas, revisa el BIN o formato.")
-        
+
         binsito = binlist(bin_number)
         if not binsito[0]:
             binsito = (None, "Unknown", "Unknown", "Unknown", "Unknown", "", "Unknown")
@@ -285,7 +264,6 @@ def gen(message):
 """        
         for c in cards:
             text += f"<code>{c.strip()}</code>\n"
-
         text += f"""
 𝗕𝗜𝗡 𝗜𝗡𝗙𝗢: {binsito[1]} - {binsito[2]} - {binsito[3]}
 𝗖𝗢𝗨𝗡𝗧𝗥𝗬: {binsito[4]} {binsito[5]}
@@ -302,7 +280,6 @@ def gen(message):
 def sagepay_cmd(message):
     try:
         userid = str(message.from_user.id)
-
         if not ver_user(userid):
             return bot.reply_to(message, '🚫 No estás autorizado, contacta @colale1k.')
 
@@ -312,7 +289,6 @@ def sagepay_cmd(message):
 
         card = args[1].strip()
         partes = card.split("|")
-
         cc  = partes[0] if len(partes) > 0 else ""
         mes = partes[1] if len(partes) > 1 else ""
         ano = partes[2] if len(partes) > 2 else ""
@@ -333,17 +309,13 @@ def sagepay_cmd(message):
         text = f"""
 {estado}
 Card: <code>{card}</code>
-
 𝗕𝗜𝗡 𝗜𝗡𝗙𝗢: {binsito[1]} - {binsito[2]} - {binsito[3]}
 𝗖𝗢𝗨𝗡𝗧𝗥𝗬: {binsito[4]} {binsito[5]}
 𝗕𝗔𝗡𝗞: {binsito[6]}
-
 <b>Respuesta:</b> <code>{result}</code>
-
 Checked by: @{message.from_user.username or message.from_user.id}
 """
         bot.reply_to(message, text, parse_mode="HTML")
-
     except Exception as e:
         bot.reply_to(message, f"❌ Error interno en /sg: {e}")
 
