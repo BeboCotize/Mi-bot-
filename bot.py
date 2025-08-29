@@ -28,6 +28,7 @@ KEYS_FILE = "keys.json"
 # =============================
 #   HELPERS JSON
 # =============================
+
 def load_json(file):
     if not os.path.exists(file):
         return {}
@@ -57,6 +58,7 @@ def ver_user(user_id: str):
         return False
     expira = datetime.datetime.fromisoformat(users[user_id]["expires"])
     return expira > datetime.datetime.now()
+
 
 # =============================
 #   COMANDO /MYINFO
@@ -100,20 +102,6 @@ def myinfo(message):
             f"✅ Tu key sigue activa."
         )
 
-# =============================
-#   COMANDO /LISTKEYS (solo admin)
-# =============================
-@bot.message_handler(commands=['listkeys'])
-def cmd_listkeys(message):
-    if str(message.from_user.id) != str(ADMIN_ID):
-        bot.reply_to(message, "❌ No tienes permiso para usar este comando.")
-        return
-    keys = list_keys()
-    if not keys:
-        bot.reply_to(message, "⚠️ No hay keys registradas.")
-    else:
-        resp = "🔑 *Listado de Keys:*\n\n" + "\n".join(keys)
-        bot.reply_to(message, resp, parse_mode="Markdown")
 
 # =============================
 #   BINLIST LOOKUP (ANTIPUBLIC)
@@ -134,6 +122,7 @@ def binlist(bin_number: str):
             return (False, None, None, None, None, None, None)
     except Exception:
         return (False, None, None, None, None, None, None)
+
 
 # =============================
 #   NUEVO /START CON MENÚ
@@ -161,61 +150,12 @@ def start(message):
     except Exception as e:
         bot.reply_to(message, f"❌ Error en /start: {e}")
 
-# =============================
-#   (AQUÍ SIGUE TU CÓDIGO ORIGINAL)
-# =============================
-# Ejemplo: otros handlers, gates, tools, etc.
-@bot.callback_query_handler(func=lambda call: call.data.startswith("menu_"))
-def callback_menu(call):
-    try:
-        if call.data == "menu_gates":
-            text = "📂 *Menú Gates*\n\nAquí irán tus gates disponibles."
-            markup = types.InlineKeyboardMarkup()
-            markup.row(types.InlineKeyboardButton("🔙 Volver", callback_data="menu_back"))
-            bot.edit_message_caption(
-                caption=text,
-                chat_id=call.message.chat.id,
-                message_id=call.message.message_id,
-                parse_mode="Markdown",
-                reply_markup=markup
-            )
-
-        elif call.data == "menu_tools":
-            text = "🛠 *Menú Tools*\n\nAquí estarán tus herramientas."
-            markup = types.InlineKeyboardMarkup()
-            markup.row(types.InlineKeyboardButton("🔙 Volver", callback_data="menu_back"))
-            bot.edit_message_caption(
-                caption=text,
-                chat_id=call.message.chat.id,
-                message_id=call.message.message_id,
-                parse_mode="Markdown",
-                reply_markup=markup
-            )
-
-        elif call.data == "menu_back":
-            markup = types.InlineKeyboardMarkup()
-            markup.row(
-                types.InlineKeyboardButton("📂 Gates", callback_data="menu_gates"),
-                types.InlineKeyboardButton("🛠 Tools", callback_data="menu_tools")
-            )
-            markup.row(types.InlineKeyboardButton("❌ Exit", callback_data="menu_exit"))
-            bot.edit_message_caption(
-                caption="👋 Bienvenido a *Demon Slayer Bot*\n\nSelecciona una opción:",
-                chat_id=call.message.chat.id,
-                message_id=call.message.message_id,
-                parse_mode="Markdown",
-                reply_markup=markup
-            )
-
-        elif call.data == "menu_exit":
-            bot.delete_message(chat_id=call.message.chat.id, message_id=call.message.message_id)
-
-    except Exception as e:
-        bot.answer_callback_query(call.id, f"❌ Error en menú: {e}")
 
 # =============================
 #   KEYS SYSTEM
 # =============================
+import random
+import string
 
 @bot.message_handler(commands=["genkey"])
 def genkey_cmd(message):
@@ -223,19 +163,25 @@ def genkey_cmd(message):
         return bot.reply_to(message, "🚫 No tienes permiso.")
 
     args = message.text.split()
-    if len(args) < 3:
-        return bot.reply_to(message, "Uso: /genkey <nombre> <días>")
+    if len(args) < 2:
+        return bot.reply_to(message, "Uso: /genkey <días>")
 
-    nombre = args[1]
     try:
-        dias = int(args[2])
+        dias = int(args[1])
     except ValueError:
         return bot.reply_to(message, "🚫 Días debe ser un número.")
 
-    key, expira = generate_key(nombre, dias)
+    # Generar key con prefijo Demon
+    sufijo = ''.join(random.choices(string.ascii_letters + string.digits, k=6))
+    key_name = f"Demon{sufijo}"
+
+    # Guardar usando keys.py
+    key, expira = generate_key(key_name, dias)
+
     bot.reply_to(
         message,
-        f"✅ Key generada:\n\n`{key}`\nExpira: {expira.strftime('%Y-%m-%d %H:%M:%S')}"
+        f"✅ Key generada:\n\n`{key}`\n⏳ Expira: {expira.strftime('%Y-%m-%d %H:%M:%S')}",
+        parse_mode="Markdown"
     )
 
 
@@ -247,10 +193,30 @@ def claim_cmd(message):
 
     key = args[1]
     user_id = str(message.from_user.id)
-    username = f"@{message.from_user.username}" if message.from_user.username else message.from_user.first_name
+    username = message.from_user.username or message.from_user.first_name
 
     ok, msg = claim_key(user_id, username, key)
     bot.reply_to(message, msg)
+
+
+@bot.message_handler(commands=["listkeys"])
+def listkeys_cmd(message):
+    if message.from_user.id != ADMIN_ID:
+        return bot.reply_to(message, "🚫 No tienes permiso.")
+
+    keys = list_keys()
+    if not keys:
+        return bot.reply_to(message, "📂 No hay keys generadas.")
+
+    texto = "🔑 *Keys disponibles:*\n\n"
+    for k, v in keys.items():
+        texto += f"- `{k}` → expira {v['expires']}\n"
+    bot.reply_to(message, texto, parse_mode="Markdown")
+
+
+# =============================
+#   (el resto de tu código sigue igual)
+# =============================
 
 
 @bot.message_handler(commands=["keys"])
