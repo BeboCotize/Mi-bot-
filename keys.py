@@ -53,53 +53,32 @@ def generate_key(nombre: str, dias: int):
     return key, expira
 
 
-def claim_key(user_id: str, username: str, key: str):
+def claim_key(user_id: int, username: str, key: str):
     keys = load_keys()
     users = load_users()
 
     if key not in keys:
-        return False, "🚫 Key inválida."
-
-    expira = datetime.datetime.fromisoformat(keys[key]["expires"])
+        return False, "❌ Key inválida."
+    if keys[key]["usado"]:
+        return False, "❌ Esta key ya fue reclamada."
+    
+    expira = datetime.datetime.fromisoformat(keys[key]["expira"])
     if expira < datetime.datetime.now():
-        return False, "🚫 Esa key ya expiró."
+        return False, "❌ Esta key ya expiró."
 
-    if keys[key].get("claimed", False):
-        return False, "🚫 Esa key ya fue usada."
+    # 🔹 Aseguramos que el user_id sea string (para JSON)
+    user_id_str = str(user_id)
 
-    # ✅ asignamos al usuario
-    users[user_id] = {
+    # Guardamos al usuario
+    users[user_id_str] = {
         "username": username,
         "key": key,
-        "expires": keys[key]["expires"]
+        "expires": keys[key]["expira"]
     }
     save_users(users)
 
-    # ✅ marcamos como usada
-    keys[key]["claimed"] = True
-    keys[key]["claimed_by"] = username
+    # Marcamos la key como usada
+    keys[key]["usado"] = True
     save_keys(keys)
 
-    return True, f"✅ Key aceptada {username}, ya puedes usar /gen y /sg."
-
-
-def list_keys():
-    keys = load_keys()
-    now = datetime.datetime.now()
-
-    lista = []
-    for k, v in keys.items():
-        expira = datetime.datetime.fromisoformat(v["expires"])
-        estado = "✅ Activa"
-        if v.get("claimed", False):
-            estado = f"⚠️ Usada por {v.get('claimed_by', 'Desconocido')}"
-        elif expira < now:
-            estado = "❌ Expirada"
-
-        lista.append(
-            f"`{k}` - {v['nombre']} - expira {expira.strftime('%Y-%m-%d')} - {estado}"
-        )
-
-    if not lista:
-        return "No hay keys registradas."
-    return "\n".join(lista)
+    return True, f"✅ Key válida.\nExpira: {expira.strftime('%Y-%m-%d %H:%M:%S')}"
