@@ -1,84 +1,87 @@
 import json
-import os
-import datetime
 import random
 import string
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 KEYS_FILE = "keys.json"
 USERS_FILE = "users.json"
 
-
-def load_json(filename):
-    if not os.path.exists(filename):
-        return {}
-    with open(filename, "r") as f:
-        return json.load(f)
-
-
-def save_json(filename, data):
-    with open(filename, "w") as f:
-        json.dump(data, f, indent=4)
-
-
+# =============================
+#   KEYS STORAGE HELPERS
+# =============================
 def load_keys():
-    return load_json(KEYS_FILE)
-
+    try:
+        with open(KEYS_FILE, "r") as f:
+            return json.load(f)
+    except:
+        return {}
 
 def save_keys(keys):
-    save_json(KEYS_FILE, keys)
-
+    with open(KEYS_FILE, "w") as f:
+        json.dump(keys, f, indent=4)
 
 def load_users():
-    return load_json(USERS_FILE)
-
+    try:
+        with open(USERS_FILE, "r") as f:
+            return json.load(f)
+    except:
+        return {}
 
 def save_users(users):
-    save_json(USERS_FILE, users)
+    with open(USERS_FILE, "w") as f:
+        json.dump(users, f, indent=4)
 
+# =============================
+#   KEY FUNCTIONS
+# =============================
 
-def generate_key(nombre: str, dias: int):
+def generate_key(days_valid=1):
+    """Genera una nueva key con fecha de expiración"""
+    key = ''.join(random.choices(string.ascii_uppercase + string.digits, k=16))
     keys = load_keys()
-    key = ''.join(random.choices(string.ascii_letters + string.digits, k=12))
-    expira = datetime.datetime.now() + timedelta(days=dias)
-
+    expires_at = (datetime.now() + timedelta(days=days_valid)).isoformat()
+    
     keys[key] = {
-        "nombre": nombre,
-        "expires": expira.isoformat(),
-        "claimed": False,
+        "expires": expires_at,
         "claimed_by": None
     }
     save_keys(keys)
+    return key, expires_at
 
-    return key, expira
-
-
-def claim_key(user_id: int, username: str, key: str):
+def claim_key(user_id, username, key):
+    """Permite a un usuario reclamar una key"""
     keys = load_keys()
     users = load_users()
 
     if key not in keys:
         return False, "❌ Key inválida."
-    if keys[key]["usado"]:
+
+    if keys[key]["claimed_by"] is not None:
         return False, "❌ Esta key ya fue reclamada."
-    
-    expira = datetime.datetime.fromisoformat(keys[key]["expira"])
-    if expira < datetime.datetime.now():
+
+    expira_dt = datetime.fromisoformat(keys[key]["expires"])
+    if expira_dt < datetime.now():
         return False, "❌ Esta key ya expiró."
 
-    # 🔹 Aseguramos que el user_id sea string (para JSON)
-    user_id_str = str(user_id)
-
-    # Guardamos al usuario
-    users[user_id_str] = {
+    # Guardar al usuario como dueño de la key
+    keys[key]["claimed_by"] = user_id
+    users[user_id] = {
         "username": username,
         "key": key,
-        "expires": keys[key]["expira"]
+        "expires": keys[key]["expires"]
     }
-    save_users(users)
 
-    # Marcamos la key como usada
-    keys[key]["usado"] = True
     save_keys(keys)
+    save_users(users)
+    return True, f"✅ Key reclamada correctamente. Expira el {keys[key]['expires']}"
 
-    return True, f"✅ Key válida.\nExpira: {expira.strftime('%Y-%m-%d %H:%M:%S')}"
+def list_keys():
+    """Devuelve todas las keys con su estado"""
+    keys = load_keys()
+    result = []
+    for k, data in keys.items():
+        claimed = data["claimed_by"]
+        expires = data["expires"]
+        status = "✅ Disponible" if claimed is None else f"👤 Reclamada por {claimed}"
+        result.append(f"{k} | {expires} | {status}")
+    return result
