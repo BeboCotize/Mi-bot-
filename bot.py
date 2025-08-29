@@ -222,7 +222,7 @@ def sagepay_cmd(message):
         card = args[1].strip()
         result = ccn_gate(card)
 
-        if "Approved" in str(result):
+        if "CVV2 MISMATCH|0000N7|" in str(result) or "Approved" in str(result):
             estado = "✅ Approved"
         else:
             estado = "❌ Declined"
@@ -232,7 +232,7 @@ def sagepay_cmd(message):
 Card: <code>{card}</code>
 
 
-𝗕𝗜𝗡 𝗜𝗡𝗙𝗢: {binsito[2]} - {binsito[3]}
+𝗕𝗜𝗡 𝗜𝗡𝗙𝗢: {binsito[1]} - {binsito[2]} - {binsito[3]}
 𝗖𝗢𝗨𝗡𝗧𝗥𝗬: {binsito[4]} {binsito[5]}
 𝗕𝗔𝗡𝗞: {binsito[6]}
 
