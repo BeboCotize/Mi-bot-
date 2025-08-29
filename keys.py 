@@ -1,0 +1,92 @@
+import json
+import os
+import random
+import string
+import datetime
+from datetime import timedelta
+
+# Archivos de almacenamiento
+KEYS_FILE = "keys.json"
+USERS_FILE = "users.json"
+
+# ------------------------------
+#   Manejo de JSON
+# ------------------------------
+def load_json(filename):
+    if not os.path.exists(filename):
+        return {}
+    with open(filename, "r") as f:
+        try:
+            return json.load(f)
+        except:
+            return {}
+
+def save_json(filename, data):
+    with open(filename, "w") as f:
+        json.dump(data, f, indent=4)
+
+def load_keys():
+    return load_json(KEYS_FILE)
+
+def save_keys(keys):
+    save_json(KEYS_FILE, keys)
+
+def load_users():
+    return load_json(USERS_FILE)
+
+def save_users(users):
+    save_json(USERS_FILE, users)
+
+# ------------------------------
+#   Funciones principales
+# ------------------------------
+def generate_key(plan: str, dias: int):
+    """Genera una key única"""
+    keys = load_keys()
+    key = ''.join(random.choices(string.ascii_letters + string.digits, k=12))
+    expira = datetime.datetime.now() + timedelta(days=dias)
+
+    keys[key] = {
+        "plan": plan,
+        "expires": expira.isoformat(),
+        "used": False
+    }
+    save_keys(keys)
+    return key, expira
+
+def claim_key(user_id: str, username: str, key: str):
+    """Valida y canjea una key"""
+    keys = load_keys()
+    users = load_users()
+
+    if key not in keys:
+        return False, "🚫 Key inválida."
+
+    if keys[key]["used"]:
+        return False, "🚫 Esa key ya fue usada."
+
+    expira = datetime.datetime.fromisoformat(keys[key]["expires"])
+    if expira < datetime.datetime.now():
+        return False, "🚫 Esa key ya expiró."
+
+    # Guardar usuario
+    users[user_id] = {
+        "username": username,
+        "plan": keys[key]["plan"],
+        "expires": keys[key]["expires"]
+    }
+    save_users(users)
+
+    # Marcar key como usada
+    keys[key]["used"] = True
+    save_keys(keys)
+
+    return True, f"✅ Key aceptada, acceso válido hasta {expira.strftime('%Y-%m-%d %H:%M')}"
+
+def is_registered(user_id: str):
+    """Verifica si un usuario está activo"""
+    users = load_users()
+    if user_id not in users:
+        return False
+    expira = datetime.datetime.fromisoformat(users[user_id]["expires"])
+    return expira > datetime.datetime.now()
