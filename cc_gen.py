@@ -1,4 +1,4 @@
-import random, pytz, datetime, re
+import random, pytz, datetime, re, requests
 
 def luhn_checksum(card_number):
     def digits_of(n):
@@ -66,23 +66,11 @@ def cc_gen(cc, mes='xx', ano='xxxx', cvv='rnd'):
         else:
             cvv = re.findall(r"[0-9]+", cvv)[0]
 
-            if card[0:1] == '4':
+            if card[0:1] in ['4','5','6']:
                 if len(cvv) < 3:
                     cvv_gen = str(cvv + str(random.randint(100,999)))[0:3]
                 else:
                     cvv_gen = cvv
-            elif card[0:1] == '5':
-                if len(cvv) < 3:
-                    cvv_gen = str(cvv + str(random.randint(100,999)))[0:3]
-                else:
-                    cvv_gen = cvv
-
-            elif card[0:1] == '6':
-                if len(cvv) < 3:
-                    cvv_gen = str(cvv + str(random.randint(100,999)))[0:3]
-                else:
-                    cvv_gen = cvv
-                
             elif card[0:1] == '3':
                 if len(cvv) < 4:
                     cvv_gen = str(cvv + str(random.randint(1000,9999)))[0:4]
@@ -93,7 +81,6 @@ def cc_gen(cc, mes='xx', ano='xxxx', cvv='rnd'):
 
         a = is_luhn_valid(card)
         if a:
-
             IST = pytz.timezone('US/Central') 
             now = datetime.datetime.now(IST)
             max_reintentos = 10
@@ -106,15 +93,36 @@ def cc_gen(cc, mes='xx', ano='xxxx', cvv='rnd'):
                     x = str(card) + '|' + str(mes_gen) + '|' + str(ano_gen) + '|' + str(cvv_gen) + '\n'
                     added = ccs.append(x)
                     break
-                    
                 else:
                     intentos += 1
                     break
-        
             else:
                 continue
-                
         else:
             continue
 
     return ccs
+
+# ────────────────
+# 🔍 BIN LOOKUP
+# ────────────────
+def bin_lookup(bin_number: str):
+    try:
+        url = f"https://lookup.binlist.net/{bin_number}"
+        headers = {"Accept-Version": "3"}
+        r = requests.get(url, headers=headers, timeout=10)
+
+        if r.status_code == 200:
+            data = r.json()
+            return {
+                "scheme": data.get("scheme", "N/A"),
+                "type": data.get("type", "N/A"),
+                "brand": data.get("brand", "N/A"),
+                "bank": data.get("bank", {}).get("name", "N/A"),
+                "country": data.get("country", {}).get("name", "N/A"),
+                "emoji": data.get("country", {}).get("emoji", ""),
+            }
+        else:
+            return {"error": f"BIN no encontrado (status {r.status_code})"}
+    except Exception as e:
+        return {"error": str(e)}
