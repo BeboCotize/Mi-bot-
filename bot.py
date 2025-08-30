@@ -7,7 +7,7 @@ from telebot import types
 import random
 import sqlite3 
 
-from cc_gen import cc_gen
+from cc_gen import cc_gen, bin_lookup   # ✅ importamos también bin_lookup
 from sagepay import ccn_gate
 from db import init_db, add_user, user_has_access, generate_key, claim_key
 
@@ -227,14 +227,22 @@ def sagepay_cmd(message):
         else:
             estado = "❌ Declined"
 
+        # ✅ Lookup de BIN
+        bininfo = bin_lookup(card)
+        if bininfo:
+            bin_text = f"""
+𝗕𝗜𝗡 𝗜𝗡𝗙𝗢: {bininfo['scheme']} - {bininfo['type']} - {bininfo['brand']}
+𝗖𝗢𝗨𝗡𝗧𝗥𝗬: {bininfo['country']} {bininfo['emoji']}
+𝗕𝗔𝗡𝗞: {bininfo['bank']}
+"""
+        else:
+            bin_text = "⚠️ No se pudo obtener información del BIN."
+
         text = f"""
 {estado}
 Card: <code>{card}</code>
 
-
-𝗕𝗜𝗡 𝗜𝗡𝗙𝗢: {binsito[1]} - {binsito[2]} - {binsito[3]}
-𝗖𝗢𝗨𝗡𝗧𝗥𝗬: {binsito[4]} {binsito[5]}
-𝗕𝗔𝗡𝗞: {binsito[6]}
+{bin_text}
 
 <b>Respuesta:</b> <code>{result}</code>
 
