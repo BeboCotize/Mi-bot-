@@ -9,6 +9,8 @@ from sagepay import ccn_gate
 TOKEN = os.getenv("BOT_TOKEN", "AQUI_TU_TOKEN")
 bot = telebot.TeleBot(TOKEN, parse_mode="HTML")
 
+# Eliminar cualquier webhook anterior para evitar conflictos con getUpdates
+bot.delete_webhook()
 
 # ────────────────
 #   /start
