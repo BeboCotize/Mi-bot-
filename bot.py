@@ -13,7 +13,7 @@ from sagepay import ccn_gate
 from telebot import types
 from db_store import init_db, registro_usuario, usuario_registrado, usuario_tiene_key, asignar_key_a_usuario, get_user_keys, registrar_uso_spam, ultimo_tiempo_spam, key_expirates
 
-# Configuración
+# Configuración 
 TOKEN = os.getenv("BOT_TOKEN")
 URL = os.getenv("APP_URL")
 ADMIN_ID = int(os.getenv("ADMIN_ID", "6629555218"))
