@@ -1,27 +1,26 @@
-from telebot import TeleBot
+from telebot import TeleBot, types
 from braintree import bw
-from telebot.types import InlineKeyboardButton,InlineKeyboardButton,InlineKeyboardMarkup,CallbackQuery
+from telebot.types import InlineKeyboardButton, InlineKeyboardMarkup
 import time, requests, re
-import datetime, pytz
+import datetime, pytz, os
 from cc_gen import cc_gen
 from sqldb import *
 import enums
 import json
+from flask import Flask, request
 
-
-
-
-token = "8271445453:AAE7sVaxjpSVHNxCwbiHFKK2cxjK8vxuDsI"
-bot = TeleBot(token, parse_mode='HTML')
+# =============================
+#   CONFIG BOT
+# =============================
+TOKEN = os.getenv("BOT_TOKEN", "8271445453:AAE7sVaxjpSVHNxCwbiHFKK2cxjK8vxuDsI")
+bot = TeleBot(TOKEN, parse_mode='HTML')
+app = Flask(__name__)
 
 user = ['6629555218']
 
-
-
-
-
-
-
+# =============================
+#   FUNCIONES Y HANDLERS
+# =============================
 
 @bot.message_handler(commands=["bin"])
 def bin(message):
@@ -113,21 +112,21 @@ def rand(message):
         if dir_fake() is None:
             bot.reply_to(message, 'Error en la api de direccion.')
         else:
+            datos = dir_fake()
             texto = f"""
 ══𝐫𝐚𝐧𝐝𝐨𝐦 𝐚𝐝𝐫𝐞𝐬𝐬══
-𝗳𝘂𝗹𝗹 𝗻𝗮𝗺𝗲: {dir_fake()[0]} {dir_fake()[1]}
-𝗽𝗵𝗼𝗻𝗲 𝗻𝘂𝗺𝗯𝗲𝗿: {dir_fake()[2]}
-𝗰𝗶𝘁𝘆: {dir_fake()[3]}
-𝘀𝘁𝗿𝗲𝗲𝘁 𝗻𝗮𝗺𝗲: {dir_fake()[4]}
-𝗮𝗱𝗱𝗿𝗲𝘀𝘀: {dir_fake()[5]}
-𝗣𝗼𝘀𝘁𝗮𝗹 𝗖𝗼𝗱𝗲: {dir_fake()[6]}
-𝘀𝘁𝗮𝘁𝗲: {dir_fake()[7]}
-𝗰𝗼𝘂𝗻𝘁𝗿𝘆: {dir_fake()[8]}
+𝗳𝘂𝗹𝗹 𝗻𝗮𝗺𝗲: {datos[0]} {datos[1]}
+𝗽𝗵𝗼𝗻𝗲 𝗻𝘂𝗺𝗯𝗲𝗿: {datos[2]}
+𝗰𝗶𝘁𝘆: {datos[3]}
+𝘀𝘁𝗿𝗲𝗲𝘁 𝗻𝗮𝗺𝗲: {datos[4]}
+𝗮𝗱𝗱𝗿𝗲𝘀𝘀: {datos[5]}
+𝗣𝗼𝘀𝘁𝗮𝗹 𝗖𝗼𝗱𝗲: {datos[6]}
+𝘀𝘁𝗮𝘁𝗲: {datos[7]}
+𝗰𝗼𝘂𝗻𝘁𝗿𝘆: {datos[8]}
 ════════════════════════════
 @colale1k
 """
             bot.reply_to(message, texto)
-
 
 
 @bot.message_handler(commands=['gen'])
@@ -232,7 +231,6 @@ def gen(message):
                     bot.reply_to(message, "error al generar")
 
 
-
 @bot.message_handler(commands=['cmds'])
 def cmds(message):
     buttons_cmds = [
@@ -248,10 +246,7 @@ def cmds(message):
     markup_buttom = InlineKeyboardMarkup(buttons_cmds)
     text = "<b>𝐄𝐒𝐓𝐀𝐒 𝐄𝐍 𝐋𝐀 𝐒𝐄𝐒𝐈𝐎𝐍  𝐃𝐄 𝐂𝐎𝐌𝐀𝐍𝐃𝐎𝐒</b>"
     phot = open('photo.jpg', 'rb')
-    bot.send_photo(chat_id = message.chat.id, photo=phot, caption = text, reply_to_message_id = message.id, reply_markup=InlineKeyboardMarkup(buttons_cmds))
-
-
-
+    bot.send_photo(chat_id = message.chat.id, photo=phot, caption = text, reply_to_message_id = message.id, reply_markup=markup_buttom)
 
 
 @bot.message_handler(commands=['start'])
@@ -308,11 +303,8 @@ def gate(message):
         bot.reply_to(message, 'No estas autorizado, contacta @colale1k.')
 
 
-
-    
-
 @bot.message_handler(commands=['Deluxe'])
-def start(message):
+def deluxe(message):
     phot = open('photo.jpg', 'rb')
     text = f"""
 ⚠️¡Duluxe Chk (términos y condiciones)  
@@ -330,15 +322,34 @@ Actualizaciones/Referencias: Aqui (https://t.me/DuluxeChk)
     bot.send_photo(chat_id = message.chat.id, photo=phot, caption = text, reply_to_message_id = message.id,)
 
 
+# =============================
+#   FLASK - WEBHOOK
+# =============================
 
-bot.infinity_polling()
+@app.route(f"/{TOKEN}", methods=["POST"])
+def webhook():
+    update = request.get_json(force=True)
+    if update:
+        upd = types.Update.de_json(update)
+        bot.process_new_updates([upd])
+    return "ok", 200
 
 
+@app.route("/", methods=["GET"])
+def index():
+    bot.remove_webhook()
+    bot.set_webhook(url=f"https://mi-bot-bottoken.up.railway.app/{TOKEN}")
+    return "Webhook set", 200
 
 
-
-
-
-
-
-
+# =============================
+#   MAIN
+# =============================
+if __name__ == "__main__":
+    if os.getenv("RAILWAY_ENVIRONMENT"):
+        # En Railway usa webhook
+        app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+    else:
+        # En local usa polling
+        bot.remove_webhook()
+        bot.infinity_polling()
