@@ -1,4 +1,3 @@
-
 import telebot
 import json
 import os 
@@ -15,16 +14,17 @@ from db_store import init_db, registro_usuario, usuario_registrado, usuario_tien
 
 # Configuración 
 TOKEN = os.getenv("BOT_TOKEN")
-URL = os.getenv("APP_URL")
+URL = os.getenv("APP_URL")   # 👈 Ejemplo: https://mi-bot.up.railway.app
 ADMIN_ID = int(os.getenv("ADMIN_ID", "6629555218"))
 
 bot = telebot.TeleBot(TOKEN)
+app = Flask(__name__)
 
 # Inicializar DB
 init_db()
 
 # =============================
-#   HELPERS (mantén o elimina si ya no usas JSON)
+#   HELPERS
 # =============================
 def load_json(file):
     if not os.path.exists(file):
@@ -47,7 +47,7 @@ def ver_user(user_id: str):
     return False
 
 # =============================
-#   NUEVO /START CON MENÚ (igual que antes)
+#   COMANDOS Y MENÚS
 # =============================
 @bot.message_handler(commands=["start"])
 def start(message):
@@ -69,10 +69,9 @@ def start(message):
             types.InlineKeyboardButton("❌ Exit", callback_data="menu_exit")
         )
 
-        bot.send_photo(
+        bot.send_message(
             chat_id,
-            photo=photo_url,
-            caption="👋 Bienvenido a *Demon Slayer Bot*\n\nSelecciona una opción:",
+            text="👋 Bienvenido a *Demon Slayer Bot*\n\nSelecciona una opción:",
             parse_mode="Markdown",
             reply_markup=markup
         )
@@ -85,11 +84,9 @@ def callback_menu(call):
         if call.data == "menu_gates":
             text = "📂 *Menú Gates*\n\nAquí irán tus gates disponibles."
             markup = types.InlineKeyboardMarkup()
-            markup.row(
-                types.InlineKeyboardButton("🔙 Volver", callback_data="menu_back")
-            )
-            bot.edit_message_caption(
-                caption=text,
+            markup.row(types.InlineKeyboardButton("🔙 Volver", callback_data="menu_back"))
+            bot.edit_message_text(
+                text=text,
                 chat_id=call.message.chat.id,
                 message_id=call.message.message_id,
                 parse_mode="Markdown",
@@ -98,11 +95,9 @@ def callback_menu(call):
         elif call.data == "menu_tools":
             text = "🛠 *Menú Tools*\n\nAquí estarán tus herramientas."
             markup = types.InlineKeyboardMarkup()
-            markup.row(
-                types.InlineKeyboardButton("🔙 Volver", callback_data="menu_back")
-            )
-            bot.edit_message_caption(
-                caption=text,
+            markup.row(types.InlineKeyboardButton("🔙 Volver", callback_data="menu_back"))
+            bot.edit_message_text(
+                text=text,
                 chat_id=call.message.chat.id,
                 message_id=call.message.message_id,
                 parse_mode="Markdown",
@@ -114,11 +109,9 @@ def callback_menu(call):
                 types.InlineKeyboardButton("📂 Gates", callback_data="menu_gates"),
                 types.InlineKeyboardButton("🛠 Tools", callback_data="menu_tools")
             )
-            markup.row(
-                types.InlineKeyboardButton("❌ Exit", callback_data="menu_exit")
-            )
-            bot.edit_message_caption(
-                caption="👋 Bienvenido a *Demon Slayer Bot*\n\nSelecciona una opción:",
+            markup.row(types.InlineKeyboardButton("❌ Exit", callback_data="menu_exit"))
+            bot.edit_message_text(
+                text="👋 Bienvenido a *Demon Slayer Bot*\n\nSelecciona una opción:",
                 chat_id=call.message.chat.id,
                 message_id=call.message.message_id,
                 parse_mode="Markdown",
@@ -182,13 +175,9 @@ def claim(message):
 # =============================
 @bot.message_handler(commands=['gen'])
 def gen(message):
-    # Ejemplo básico adaptado a tu flujo. Aquí podría integrarse la verificación de spam y keys.
     try:
         user_id = message.from_user.id
-        # Verificar si el usuario está registrado y tiene key para limitar spam
-        registrado = True  # asumiendo que /start ya registra
         con_key = usuario_tiene_key(user_id)
-        # Lógica existente de /gen (tu implementación actual debe ir aquí)
         bot.reply_to(message, "Función /gen integrada con DB (completa según tu lógica).")
     except Exception as e:
         bot.reply_to(message, f"❌ Error en /gen: {e}")
@@ -200,14 +189,28 @@ def gen(message):
 def sagepay_cmd(message):
     try:
         user_id = message.from_user.id
-        # Permite usar solo si está registrado (opcional) y con control de spam
-        # Reutiliza tu flujo existente de /sg, con puntos para DB si quieres verificar key/permiso
         bot.reply_to(message, "Ejecutando SagePay (sg) — integrada con DB (aquí va tu flujo).")
     except Exception as e:
         bot.reply_to(message, f"❌ Error en /sg: {e}")
 
-# Inicio del polling
+# =============================
+#   FLASK ROUTES (WEBHOOK)
+# =============================
+@app.route(f"/{TOKEN}", methods=["POST"])
+def receive_update():
+    json_str = request.get_data().decode("utf-8")
+    update = telebot.types.Update.de_json(json_str)
+    bot.process_new_updates([update])
+    return "!", 200
+
+@app.route("/")
+def set_webhook():
+    bot.remove_webhook()
+    bot.set_webhook(url=f"{URL}/{TOKEN}")
+    return "Webhook set!", 200
+
+# =============================
+#   MAIN
+# =============================
 if __name__ == "__main__":
-    TOKEN = os.getenv("BOT_TOKEN")
-    bot = telebot.TeleBot(TOKEN)
-    bot.infinity_polling()
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
