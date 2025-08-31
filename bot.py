@@ -176,9 +176,62 @@ def claim(message):
 @bot.message_handler(commands=['gen'])
 def gen(message):
     try:
-        user_id = message.from_user.id
-        con_key = usuario_tiene_key(user_id)
-        bot.reply_to(message, "Función /gen integrada con DB (completa según tu lógica).")
+        user_id = str(message.from_user.id)
+
+        # 🔒 Verificar si el usuario tiene key válida
+        if not ver_user(user_id):
+            return bot.reply_to(message, '🚫 No estás autorizado, contacta @colale1k.')
+
+        # ⏳ Control antispam
+        last_time = ultimo_tiempo_spam(user_id)
+        if last_time:
+            diff = (datetime.datetime.utcnow() - last_time).total_seconds()
+            if diff < 10:  # por ejemplo 10 segundos de cooldown
+                return bot.reply_to(message, f"⏳ Espera {int(10 - diff)}s antes de usar /gen otra vez.")
+
+        args = message.text.split(" ", 1)
+        if len(args) < 2:
+            return bot.reply_to(message, "❌ Uso correcto: /gen <bin> (ej. /gen 411111)")
+
+        bin_input = args[1].strip()
+
+        # 🔥 Generar tarjetas (usa tu función cc_gen)
+        cards = cc_gen(bin_input, cantidad=10)  # genera 10 tarjetas por defecto
+
+        if not cards:
+            return bot.reply_to(message, "❌ No se pudo generar tarjetas con ese BIN.")
+
+        # 👁️‍🗨️ Info de BIN
+        try:
+            from cc_gen import bin_lookup
+            binsito = bin_lookup(bin_input[:6])
+        except Exception:
+            binsito = ("Unknown", "Unknown", "Unknown", "Unknown", "Unknown", "🏳️", "Unknown")
+
+        # ✅ Marcar uso para control de spam
+        registrar_uso_spam(user_id)
+
+        # 📤 Preparar respuesta
+        card_list = "\n".join([f"<code>{c}</code>" for c in cards])
+
+        text = f"""
+✅ Tarjetas generadas con éxito
+
+𝗕𝗜𝗡: {bin_input[:6]}
+𝗦𝗰𝗵𝗲𝗺𝗲: {binsito[0]}
+𝗧𝘆𝗽𝗲: {binsito[2]}
+𝗟𝗲𝘃𝗲𝗹: {binsito[3]}
+𝗖𝗼𝘂𝗻𝘁𝗿𝘆: {binsito[4]} {binsito[5]}
+𝗕𝗮𝗻𝗸: {binsito[6]}
+
+<b>Tarjetas:</b>
+{card_list}
+
+👤 Checked by: @{message.from_user.username or message.from_user.id}
+"""
+
+        bot.reply_to(message, text, parse_mode="HTML")
+
     except Exception as e:
         bot.reply_to(message, f"❌ Error en /gen: {e}")
 
