@@ -4,28 +4,29 @@ import os
 import re
 import pytz 
 import datetime
-from cc_gen import cc_gen
+from cc_gen import cc_gen  # tu cc_gen.py debe tener las funciones que pasaste
 from datetime import timedelta
 from flask import Flask, request
 import requests
-from sagepay import ccn_gate
+from sagepay import ccn_gate   # ✅ importamos tu nuevo archivo
 from telebot import types
-from db_store import init_db, registro_usuario, usuario_registrado, usuario_tiene_key, asignar_key_a_usuario, get_user_keys, registrar_uso_spam, ultimo_tiempo_spam, key_expirates
 
-# Configuración 
+# =============================
+#   CONFIG BOT
+# =============================
 TOKEN = os.getenv("BOT_TOKEN")
-URL = os.getenv("APP_URL")   # 👈 Ejemplo: https://mi-bot.up.railway.app
-ADMIN_ID = int(os.getenv("ADMIN_ID", "6629555218"))
+URL = os.getenv("APP_URL")  # ej: https://mi-bot-production.up.railway.app
+ADMIN_ID = int(os.getenv("ADMIN_ID", "6629555218"))  # tu ID de admin fijo
 
 bot = telebot.TeleBot(TOKEN)
-app = Flask(__name__)
 
-# Inicializar DB
-init_db()
+USERS_FILE = "users.json"
+KEYS_FILE = "keys.json"
 
 # =============================
 #   HELPERS
 # =============================
+
 def load_json(file):
     if not os.path.exists(file):
         return {}
@@ -36,30 +37,57 @@ def save_json(file, data):
     with open(file, "w") as f:
         json.dump(data, f, indent=4)
 
+def load_users():
+    return load_json(USERS_FILE)
+
+def save_users(users):
+    save_json(USERS_FILE, users)
+
+def load_keys():
+    return load_json(KEYS_FILE)
+
+def save_keys(keys):
+    save_json(KEYS_FILE, keys)
+
 def ver_user(user_id: str):
-    """Verifica si el usuario tiene key válida en DB o JSON (prioriza DB)"""
-    if usuario_registrado(int(user_id)) and usuario_tiene_key(int(user_id)):
-        return True
-    users = load_json("users.json")
-    if user_id in users:
-        expira = datetime.datetime.fromisoformat(users[user_id]["expires"])
-        return expira > datetime.datetime.now()
-    return False
+    """Verifica si el usuario tiene key válida"""
+    users = load_users()
+    if user_id not in users:
+        return False
+    expira = datetime.datetime.fromisoformat(users[user_id]["expires"])
+    return expira > datetime.datetime.now()
 
 # =============================
-#   COMANDOS Y MENÚS
+#   BINLIST LOOKUP (ANTIPUBLIC)
+# =============================
+def binlist(bin_number: str):
+    try:
+        r = requests.get(f"https://bins.antipublic.cc/bins/{bin_number}")
+        if r.status_code == 200:
+            data = r.json()
+            brand = data.get("scheme", "Unknown").upper()
+            tipo = data.get("type", "Unknown").upper()
+            level = data.get("brand", "Unknown").upper()
+            country_name = data.get("country_name", "Unknown")
+            flag = data.get("country_flag", "")
+            bank = data.get("bank", "Unknown")
+            return (True, brand, tipo, level, country_name, flag, bank)
+        else:
+            return (False, None, None, None, None, None, None)
+    except Exception:
+        return (False, None, None, None, None, None, None)
+
+# =============================
+#   NUEVO /START CON MENÚ
 # =============================
 @bot.message_handler(commands=["start"])
 def start(message):
     try:
         chat_id = message.chat.id
-        user_id = message.from_user.id
-        username = message.from_user.username or ""
 
-        # Registrar usuario en DB
-        registro_usuario(user_id, username)
-
+        # Cambia esta URL por la imagen que quieras
         photo_url = "https://imgur.com/a/ytDQfiM"
+
         markup = types.InlineKeyboardMarkup()
         markup.row(
             types.InlineKeyboardButton("📂 Gates", callback_data="menu_gates"),
@@ -69,12 +97,14 @@ def start(message):
             types.InlineKeyboardButton("❌ Exit", callback_data="menu_exit")
         )
 
-        bot.send_message(
+        bot.send_photo(
             chat_id,
-            text="👋 Bienvenido a *Demon Slayer Bot*\n\nSelecciona una opción:",
+            photo=photo_url,
+            caption="👋 Bienvenido a *Demon Slayer Bot*\n\nSelecciona una opción:",
             parse_mode="Markdown",
             reply_markup=markup
         )
+
     except Exception as e:
         bot.reply_to(message, f"❌ Error en /start: {e}")
 
@@ -84,43 +114,57 @@ def callback_menu(call):
         if call.data == "menu_gates":
             text = "📂 *Menú Gates*\n\nAquí irán tus gates disponibles."
             markup = types.InlineKeyboardMarkup()
-            markup.row(types.InlineKeyboardButton("🔙 Volver", callback_data="menu_back"))
-            bot.edit_message_text(
-                text=text,
+            markup.row(
+                types.InlineKeyboardButton("🔙 Volver", callback_data="menu_back")
+            )
+            bot.edit_message_caption(
+                caption=text,
                 chat_id=call.message.chat.id,
                 message_id=call.message.message_id,
                 parse_mode="Markdown",
                 reply_markup=markup
             )
+
         elif call.data == "menu_tools":
             text = "🛠 *Menú Tools*\n\nAquí estarán tus herramientas."
             markup = types.InlineKeyboardMarkup()
-            markup.row(types.InlineKeyboardButton("🔙 Volver", callback_data="menu_back"))
-            bot.edit_message_text(
-                text=text,
+            markup.row(
+                types.InlineKeyboardButton("🔙 Volver", callback_data="menu_back")
+            )
+            bot.edit_message_caption(
+                caption=text,
                 chat_id=call.message.chat.id,
                 message_id=call.message.message_id,
                 parse_mode="Markdown",
                 reply_markup=markup
             )
+
         elif call.data == "menu_back":
             markup = types.InlineKeyboardMarkup()
             markup.row(
                 types.InlineKeyboardButton("📂 Gates", callback_data="menu_gates"),
                 types.InlineKeyboardButton("🛠 Tools", callback_data="menu_tools")
             )
-            markup.row(types.InlineKeyboardButton("❌ Exit", callback_data="menu_exit"))
-            bot.edit_message_text(
-                text="👋 Bienvenido a *Demon Slayer Bot*\n\nSelecciona una opción:",
+            markup.row(
+                types.InlineKeyboardButton("❌ Exit", callback_data="menu_exit")
+            )
+            bot.edit_message_caption(
+                caption="👋 Bienvenido a *Demon Slayer Bot*\n\nSelecciona una opción:",
                 chat_id=call.message.chat.id,
                 message_id=call.message.message_id,
                 parse_mode="Markdown",
                 reply_markup=markup
             )
+
         elif call.data == "menu_exit":
             bot.delete_message(chat_id=call.message.chat.id, message_id=call.message.message_id)
+
     except Exception as e:
         bot.answer_callback_query(call.id, f"❌ Error en menú: {e}")
+
+# =============================
+#   COMANDOS EXISTENTES
+# =============================
 
 # Generar key (solo admin)
 @bot.message_handler(commands=["genkey"])
@@ -130,20 +174,23 @@ def genkey(message):
             return bot.reply_to(message, "🚫 No tienes permiso para usar este comando.")
 
         args = message.text.split()
-        days = 1
-        if len(args) >= 2:
-            try:
-                days = int(args[1])
-                if days < 1:
-                    days = 1
-            except ValueError:
-                return bot.reply_to(message, "Uso: /genkey <días> (ej. /genkey 3)")
+        if len(args) < 3:
+            return bot.reply_to(message, "Uso: /genkey <nombre> <días>")
+        nombre = args[1]
+        dias = int(args[2])
 
+        keys = load_keys()
         import random, string
         key = ''.join(random.choices(string.ascii_letters + string.digits, k=12))
-        expires = asignar_key_a_usuario(ADMIN_ID, key, days)
+        expira = datetime.datetime.now() + timedelta(days=dias)
 
-        bot.reply_to(message, f"✅ Key generada:\n\n{key}\nExpira: {expires} (UTC)")
+        keys[key] = {
+            "nombre": nombre,
+            "expires": expira.isoformat()
+        }
+        save_keys(keys)
+
+        bot.reply_to(message, f"✅ Key generada:\n\n`{key}`\nExpira: {expira}", parse_mode="Markdown")
     except Exception as e:
         bot.reply_to(message, f"❌ Error: {e}")
 
@@ -156,15 +203,22 @@ def claim(message):
             return bot.reply_to(message, "Uso: /claim <key>")
 
         key = args[1]
-        expira_dt = key_expirates(key)
-        if expira_dt is None:
+        keys = load_keys()
+        users = load_users()
+        user_id = str(message.from_user.id)
+
+        if key not in keys:
             return bot.reply_to(message, "🚫 Key inválida.")
-        if expira_dt < datetime.datetime.utcnow():
+
+        expira = datetime.datetime.fromisoformat(keys[key]["expires"])
+        if expira < datetime.datetime.now():
             return bot.reply_to(message, "🚫 Esa key ya expiró.")
 
-        user_id = message.from_user.id
-        registro_usuario(user_id, message.from_user.username or "")
-        asignar_key_a_usuario(user_id, key, 1)  # 1 día
+        users[user_id] = {
+            "key": key,
+            "expires": keys[key]["expires"]
+        }
+        save_users(users)
 
         bot.reply_to(message, "✅ Key aceptada, ya puedes usar /gen.")
     except Exception as e:
@@ -176,65 +230,66 @@ def claim(message):
 @bot.message_handler(commands=['gen'])
 def gen(message):
     try:
-        user_id = str(message.from_user.id)
-
-        # 🔒 Verificar si el usuario tiene key válida
-        if not ver_user(user_id):
+        userid = str(message.from_user.id)
+        
+        if not ver_user(userid):
             return bot.reply_to(message, '🚫 No estás autorizado, contacta @colale1k.')
-
-        # ⏳ Control antispam
-        last_time = ultimo_tiempo_spam(user_id)
-        if last_time:
-            diff = (datetime.datetime.utcnow() - last_time).total_seconds()
-            if diff < 10:  # por ejemplo 10 segundos de cooldown
-                return bot.reply_to(message, f"⏳ Espera {int(10 - diff)}s antes de usar /gen otra vez.")
-
+        
         args = message.text.split(" ", 1)
         if len(args) < 2:
-            return bot.reply_to(message, "❌ Uso correcto: /gen <bin> (ej. /gen 411111)")
+            return bot.reply_to(message, "❌ Debes especificar un BIN o formato.")
+        
+        inputcc = args[1].strip()
+        partes = inputcc.split("|")
 
-        bin_input = args[1].strip()
+        cc  = partes[0] if len(partes) > 0 else ""
+        mes = partes[1] if len(partes) > 1 else "xx"
+        ano = partes[2] if len(partes) > 2 else "xxxx"
+        cvv = partes[3] if len(partes) > 3 else "rnd"
 
-        # 🔥 Generar tarjetas (usa tu función cc_gen)
-        cards = cc_gen(bin_input, cantidad=10)  # genera 10 tarjetas por defecto
+        if len(cc) < 6:
+            return bot.reply_to(message, "❌ BIN incompleto")
+        
+        bin_number = cc[:6]
+        if cc.isdigit():
+            cc = cc[:12]
 
+        if mes.isdigit() and ano.isdigit():
+            if len(ano) == 2: 
+                ano = '20' + ano
+            IST = pytz.timezone('US/Central')
+            now = datetime.datetime.now(IST)
+            if (datetime.datetime.strptime(now.strftime("%m-%Y"), "%m-%Y") > 
+                datetime.datetime.strptime(f'{mes}-{ano}', "%m-%Y")):
+                return bot.reply_to(message, "❌ Fecha incorrecta")
+
+        cards = cc_gen(cc, mes, ano, cvv)
         if not cards:
-            return bot.reply_to(message, "❌ No se pudo generar tarjetas con ese BIN.")
-
-        # 👁️‍🗨️ Info de BIN
-        try:
-            from cc_gen import bin_lookup
-            binsito = bin_lookup(bin_input[:6])
-        except Exception:
-            binsito = ("Unknown", "Unknown", "Unknown", "Unknown", "Unknown", "🏳️", "Unknown")
-
-        # ✅ Marcar uso para control de spam
-        registrar_uso_spam(user_id)
-
-        # 📤 Preparar respuesta
-        card_list = "\n".join([f"<code>{c}</code>" for c in cards])
+            return bot.reply_to(message, "❌ No se pudo generar tarjetas, revisa el BIN o formato.")
+        
+        binsito = binlist(bin_number)
+        if not binsito[0]:
+            binsito = (None, "Unknown", "Unknown", "Unknown", "Unknown", "", "Unknown")
 
         text = f"""
-✅ Tarjetas generadas con éxito
+🇩🇴 DEMON SLAYER GENERATOR 🇩🇴
+⚙️──────────────⚙️
+"""        
+        for c in cards:
+            text += f"<code>{c.strip()}</code>\n"
 
-𝗕𝗜𝗡: {bin_input[:6]}
-𝗦𝗰𝗵𝗲𝗺𝗲: {binsito[0]}
-𝗧𝘆𝗽𝗲: {binsito[2]}
-𝗟𝗲𝘃𝗲𝗹: {binsito[3]}
-𝗖𝗼𝘂𝗻𝘁𝗿𝘆: {binsito[4]} {binsito[5]}
-𝗕𝗮𝗻𝗸: {binsito[6]}
-
-<b>Tarjetas:</b>
-{card_list}
-
-👤 Checked by: @{message.from_user.username or message.from_user.id}
+        text += f"""
+𝗕𝗜𝗡 𝗜𝗡𝗙𝗢: {binsito[1]} - {binsito[2]} - {binsito[3]}
+𝗖𝗢𝗨𝗡𝗧𝗥𝗬: {binsito[4]} {binsito[5]}
+𝗕𝗔𝗡𝗞: {binsito[6]}
 """
-
         bot.reply_to(message, text, parse_mode="HTML")
-
     except Exception as e:
-        bot.reply_to(message, f"❌ Error en /gen: {e}")
+        bot.reply_to(message, f"❌ Error interno: {e}")
 
+# =============================
+#   FUNCIÓN /SG (SAGEPAY)
+# =============================
 # =============================
 #   FUNCIÓN /SG (SAGEPAY)
 # =============================
@@ -243,7 +298,6 @@ def sagepay_cmd(message):
     try:
         userid = str(message.from_user.id)
 
-        # 🔒 Verificar si el usuario tiene acceso
         if not ver_user(userid):
             return bot.reply_to(message, '🚫 No estás autorizado, contacta @colale1k.')
 
@@ -254,71 +308,69 @@ def sagepay_cmd(message):
         card = args[1].strip()
         partes = card.split("|")
 
-        if len(partes) < 4:
-            return bot.reply_to(message, "❌ Formato inválido. Ejemplo: /sg 4111111111111111|12|2026|123")
+        cc  = partes[0] if len(partes) > 0 else ""
+        mes = partes[1] if len(partes) > 1 else ""
+        ano = partes[2] if len(partes) > 2 else ""
+        cvv = partes[3] if len(partes) > 3 else ""
 
-        cc  = partes[0]
-        mes = partes[1]
-        ano = partes[2]
-        cvv = partes[3]
-
-        # 🔎 Extraer BIN (primeros 6 dígitos)
+        # Extraer BIN y consultar info
         bin_number = cc[:6]
+        binsito = binlist(bin_number)
+        if not binsito[0]:
+            binsito = (None, "Unknown", "Unknown", "Unknown", "Unknown", "", "Unknown")
 
-        try:
-            from cc_gen import bin_lookup
-            binsito = bin_lookup(bin_number)
-            # binsito debería devolver algo tipo (scheme, brand, type, level, country, emoji, bank)
-        except Exception:
-            binsito = ("Unknown", "Unknown", "Unknown", "Unknown", "Unknown", "🏳️", "Unknown")
-
-        # 🔥 Llamar a tu función en sagepay.py
+        # Llamada a tu función en sagepay.py
         result = ccn_gate(card)
 
-        # ✅ / ❌ Detectar si aprobado
-        if any(ok in str(result) for ok in ["CVV2 MISMATCH", "Approved", "APPROVED", "0000N7"]):
+        # Revisar si está aprobado
+        if "CVV2 MISMATCH|0000N7|" in str(result) or "Approved" in str(result):
             estado = "✅ Approved"
         else:
             estado = "❌ Declined"
 
         text = f"""
 {estado}
-𝗖𝗮𝗿𝗱: <code>{card}</code>
+Card: <code>{card}</code>
 
-𝗕𝗜𝗡: {bin_number}
-𝗦𝗰𝗵𝗲𝗺𝗲: {binsito[0]}
-𝗧𝘆𝗽𝗲: {binsito[2]}
-𝗟𝗲𝘃𝗲𝗹: {binsito[3]}
-𝗖𝗼𝘂𝗻𝘁𝗿𝘆: {binsito[4]} {binsito[5]}
-𝗕𝗮𝗻𝗸: {binsito[6]}
+
+𝗕𝗜𝗡 𝗜𝗡𝗙𝗢: {binsito[1]} - {binsito[2]} - {binsito[3]}
+𝗖𝗢𝗨𝗡𝗧𝗥𝗬: {binsito[4]} {binsito[5]}
+𝗕𝗔𝗡𝗞: {binsito[6]}
 
 <b>Respuesta:</b> <code>{result}</code>
 
-👤 Checked by: @{message.from_user.username or message.from_user.id}
+Checked by: @{message.from_user.username or message.from_user.id}
 """
-
         bot.reply_to(message, text, parse_mode="HTML")
 
     except Exception as e:
-        bot.reply_to(message, f"❌ Error en /sg: {e}")
+        bot.reply_to(message, f"❌ Error interno en /sg: {e}")
 # =============================
-#   FLASK ROUTES (WEBHOOK)
+#   FLASK APP PARA RAILWAY
 # =============================
+app = Flask(__name__)
+
 @app.route(f"/{TOKEN}", methods=["POST"])
-def receive_update():
-    json_str = request.get_data().decode("utf-8")
+def webhook():
+    json_str = request.get_data().decode("UTF-8")
     update = telebot.types.Update.de_json(json_str)
     bot.process_new_updates([update])
     return "!", 200
 
 @app.route("/")
-def set_webhook():
-    bot.remove_webhook()
-    bot.set_webhook(url=f"{URL}/{TOKEN}")
-    return "Webhook set!", 200
+def home():
+    return "🤖 Bot funcionando en Railway!", 200
 
 # =============================
 #   MAIN
 # =============================
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
+    if os.getenv("RAILWAY_ENVIRONMENT") is None:
+        print("🤖 Bot en ejecución local con polling...")
+        bot.infinity_polling()
+    else:
+        port = int(os.environ.get("PORT", 5000))
+        bot.remove_webhook()
+        bot.set_webhook(url=f"{URL}/{TOKEN}")
+        print(f"🚀 Bot corriendo en Railway en {URL}")
+        app.run(host="0.0.0.0", port=port)
