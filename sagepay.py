@@ -32,7 +32,7 @@ def capture(data, start, end):
 def ccn_gate(card):
     """
     Envuelve la lógica de validación/checado de tarjetas.
-    Devuelve siempre un string en el formato CARD|STATUS|Detalles...
+    Devuelve siempre un string en el formato CARD|STATUS|DETALLES
     STATUS puede ser: APPROVED, DECLINED, ERROR, etc.
     Nunca devuelve dict ni objetos no-string.
     """
