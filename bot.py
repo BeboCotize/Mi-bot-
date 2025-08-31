@@ -188,11 +188,66 @@ def gen(message):
 @bot.message_handler(commands=['sg'])
 def sagepay_cmd(message):
     try:
-        user_id = message.from_user.id
-        bot.reply_to(message, "Ejecutando SagePay (sg) — integrada con DB (aquí va tu flujo).")
+        userid = str(message.from_user.id)
+
+        # 🔒 Verificar si el usuario tiene acceso
+        if not ver_user(userid):
+            return bot.reply_to(message, '🚫 No estás autorizado, contacta @colale1k.')
+
+        args = message.text.split(" ", 1)
+        if len(args) < 2:
+            return bot.reply_to(message, "❌ Uso correcto: /sg <cc|mm|yyyy|cvv>")
+
+        card = args[1].strip()
+        partes = card.split("|")
+
+        if len(partes) < 4:
+            return bot.reply_to(message, "❌ Formato inválido. Ejemplo: /sg 4111111111111111|12|2026|123")
+
+        cc  = partes[0]
+        mes = partes[1]
+        ano = partes[2]
+        cvv = partes[3]
+
+        # 🔎 Extraer BIN (primeros 6 dígitos)
+        bin_number = cc[:6]
+
+        try:
+            from cc_gen import bin_lookup
+            binsito = bin_lookup(bin_number)
+            # binsito debería devolver algo tipo (scheme, brand, type, level, country, emoji, bank)
+        except Exception:
+            binsito = ("Unknown", "Unknown", "Unknown", "Unknown", "Unknown", "🏳️", "Unknown")
+
+        # 🔥 Llamar a tu función en sagepay.py
+        result = ccn_gate(card)
+
+        # ✅ / ❌ Detectar si aprobado
+        if any(ok in str(result) for ok in ["CVV2 MISMATCH", "Approved", "APPROVED", "0000N7"]):
+            estado = "✅ Approved"
+        else:
+            estado = "❌ Declined"
+
+        text = f"""
+{estado}
+𝗖𝗮𝗿𝗱: <code>{card}</code>
+
+𝗕𝗜𝗡: {bin_number}
+𝗦𝗰𝗵𝗲𝗺𝗲: {binsito[0]}
+𝗧𝘆𝗽𝗲: {binsito[2]}
+𝗟𝗲𝘃𝗲𝗹: {binsito[3]}
+𝗖𝗼𝘂𝗻𝘁𝗿𝘆: {binsito[4]} {binsito[5]}
+𝗕𝗮𝗻𝗸: {binsito[6]}
+
+<b>Respuesta:</b> <code>{result}</code>
+
+👤 Checked by: @{message.from_user.username or message.from_user.id}
+"""
+
+        bot.reply_to(message, text, parse_mode="HTML")
+
     except Exception as e:
         bot.reply_to(message, f"❌ Error en /sg: {e}")
-
 # =============================
 #   FLASK ROUTES (WEBHOOK)
 # =============================
