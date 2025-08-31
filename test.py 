@@ -1,0 +1,23 @@
+import time
+
+
+
+def antispam(idus:str) -> str:
+    dicci = {
+    '6629555218': '',
+    '1073258864': ''
+    }
+    
+    dicci[idus] = int(time.time())
+
+    tiempo_spam = int(dicci[idus])
+    spam_time = int(time.time()) - tiempo_spam
+    print(dicci)
+    print(spam_time)
+    spam = '40'
+
+    if spam_time < int(spam):
+        tiempo_restante  =  int(spam) - spam_time
+        print(tiempo_restante)
+
+inssert_spam = antispam('6629555218')
