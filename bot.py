@@ -331,13 +331,12 @@ def sagepay_cmd(message):
         text = f"""
 {estado}
 Card: <code>{card}</code>
+<b>Respuesta:</b> <code>{result}</code>
 
-
-𝗕𝗜𝗡 𝗜𝗡𝗙𝗢: {binsito[2]} - {binsito[3]}
+𝗕𝗜𝗡 𝗜𝗡𝗙𝗢: {binsito[3]} - {binsito[2]}
 𝗖𝗢𝗨𝗡𝗧𝗥𝗬: {binsito[4]} {binsito[5]}
 𝗕𝗔𝗡𝗞: {binsito[6]}
 
-<b>Respuesta:</b> <code>{result}</code>
 
 Checked by: @{message.from_user.username or message.from_user.id}
 """
