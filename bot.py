@@ -265,7 +265,7 @@ def start(message):
 
 
 @bot.message_handler(commands=['bw'])
-def gate(message):
+def gate_bw(message):
     if ver_user(str(message.from_user.id)) != False:
         if message.reply_to_message:
             CARD_INPUT = re.findall(r'[0-9]+', str(message.reply_to_message.text))
@@ -292,6 +292,43 @@ def gate(message):
                     text = f"""CARD = {cc}|{mes}|{ano}|{cvv}\nSTATUS = {gateway['status']}\nRESPONSE = {gateway['result']}"""
                     bot.reply_to(message, text)
             
+            else:
+                spam_time = int(time.time())
+                sql = """INSERT INTO spam VALUES({}, {})""".format(int(message.from_user.id), spam_time)
+                insert = insert_into(sql)
+                bot.reply_to(message, 'USTED AH SIDO REGISTRADO EN LA DB, INTENTA CHEQUEAR DE NUEVO.')
+        else:
+            bot.reply_to(message, 'LA TARJETA ESTA INCOMPLETA.')
+    else:
+        bot.reply_to(message, 'No estas autorizado, contacta @colale1k.')
+
+
+# Nuevo handler para /br (similar al de /bw)
+@bot.message_handler(commands=['br'])
+def gate_br(message):
+    if ver_user(str(message.from_user.id)) != False:
+        if message.reply_to_message:
+            CARD_INPUT = re.findall(r'[0-9]+', str(message.reply_to_message.text))
+        else:
+            CARD_INPUT = re.findall(r'[0-9]+', str(message.text))
+
+        if len(CARD_INPUT) == 4:         
+            sql = """SELECT * FROM spam WHERE user = {}""".format(int(message.from_user.id))
+            consulta_dbq = consulta_db(sql)
+            if consulta_dbq != None:
+                SPAM_DEFINED = 30
+                time_db = int(consulta_dbq[1])
+                tiempo_spam = int(time.time()) - time_db
+                if tiempo_spam < SPAM_DEFINED:
+                    tiempo_restante =  SPAM_DEFINED - tiempo_spam
+                    bot.reply_to(message, f'ANTISPAM ACTIVADO, INTENTA EN {tiempo_restante} SEGUNDOS.')
+                else:
+                    cc, mes, ano, cvv = CARD_INPUT[0], CARD_INPUT[1], CARD_INPUT[2], CARD_INPUT[3]
+                    sql = """UPDATE spam SET spam_time = {} WHERE user = {}""".format(int(time.time()), int(message.from_user.id))
+                    update_time = update_into(sql)
+                    # Aquí puedes conectar otra gateway específica para /br
+                    text = f"""CARD = {cc}|{mes}|{ano}|{cvv}\nSTATUS = OK\nRESPONSE = Gateway BR ejecutada correctamente"""
+                    bot.reply_to(message, text)
             else:
                 spam_time = int(time.time())
                 sql = """INSERT INTO spam VALUES({}, {})""".format(int(message.from_user.id), spam_time)
@@ -332,24 +369,3 @@ def webhook():
     if update:
         upd = types.Update.de_json(update)
         bot.process_new_updates([upd])
-    return "ok", 200
-
-
-@app.route("/", methods=["GET"])
-def index():
-    bot.remove_webhook()
-    bot.set_webhook(url=f"https://mi-bot-bottoken.up.railway.app/{TOKEN}")
-    return "Webhook set", 200
-
-
-# =============================
-#   MAIN
-# =============================
-if __name__ == "__main__":
-    if os.getenv("RAILWAY_ENVIRONMENT"):
-        # En Railway usa webhook
-        app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
-    else:
-        # En local usa polling
-        bot.remove_webhook()
-        bot.infinity_polling()
