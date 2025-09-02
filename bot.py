@@ -264,7 +264,7 @@ def start(message):
     bot.send_photo(chat_id = message.chat.id, photo=phot, caption = text, reply_to_message_id = message.id,)
 
 
-@bot.message_handler(commands=['br'])
+@bot.message_handler(commands=['bw'])
 def gate(message):
     if ver_user(str(message.from_user.id)) != False:
         if message.reply_to_message:
