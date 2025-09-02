@@ -245,13 +245,13 @@ def cmds(message):
   
     markup_buttom = InlineKeyboardMarkup(buttons_cmds)
     text = "<b>𝐄𝐒𝐓𝐀𝐒 𝐄𝐍 𝐋𝐀 𝐒𝐄𝐒𝐈𝐎𝐍  𝐃𝐄 𝐂𝐎𝐌𝐀𝐍𝐃𝐎𝐒</b>"
-    phot = "https://i.imgur.com/XB5j3Dk.jpeg"  # Imagen de Imgur
+    phot = "https://i.imgur.com/XB5j3Dk.jpeg"
     bot.send_photo(chat_id = message.chat.id, photo=phot, caption = text, reply_to_message_id = message.id, reply_markup=markup_buttom)
 
 
 @bot.message_handler(commands=['start'])
 def start(message):
-    phot = "https://i.imgur.com/XB5j3Dk.jpeg"  # Imagen de Imgur
+    phot = "https://i.imgur.com/XB5j3Dk.jpeg"
     text = f"""
 <b>⚠️𝐁𝐢𝐞𝐧𝐯𝐞𝐧𝐢𝐝𝐨 𝐚 𝐃𝐮𝐥𝐮𝐱𝐞𝐂𝐡𝐤⚠️</b>
 ╸╸╸╸╸╸╸╸╸╸╸╸╸╸╸╸╸╸╸╸╸
@@ -303,7 +303,6 @@ def gate_bw(message):
         bot.reply_to(message, 'No estas autorizado, contacta @colale1k.')
 
 
-# Nuevo handler para /br (similar al de /bw)
 @bot.message_handler(commands=['br'])
 def gate_br(message):
     if ver_user(str(message.from_user.id)) != False:
@@ -326,7 +325,6 @@ def gate_br(message):
                     cc, mes, ano, cvv = CARD_INPUT[0], CARD_INPUT[1], CARD_INPUT[2], CARD_INPUT[3]
                     sql = """UPDATE spam SET spam_time = {} WHERE user = {}""".format(int(time.time()), int(message.from_user.id))
                     update_time = update_into(sql)
-                    # Aquí puedes conectar otra gateway específica para /br
                     text = f"""CARD = {cc}|{mes}|{ano}|{cvv}\nSTATUS = OK\nRESPONSE = Gateway BR ejecutada correctamente"""
                     bot.reply_to(message, text)
             else:
@@ -342,7 +340,7 @@ def gate_br(message):
 
 @bot.message_handler(commands=['Deluxe'])
 def deluxe(message):
-    phot = "https://i.imgur.com/XB5j3Dk.jpeg"  # Imagen de Imgur
+    phot = "https://i.imgur.com/XB5j3Dk.jpeg"
     text = f"""
 ⚠️¡Duluxe Chk (términos y condiciones)  
 
@@ -363,9 +361,19 @@ Actualizaciones/Referencias: Aqui (https://t.me/DuluxeChk)
 #   FLASK - WEBHOOK
 # =============================
 
+@app.route("/")
+def home():
+    return "Bot funcionando 🚀", 200
+
 @app.route(f"/{TOKEN}", methods=["POST"])
 def webhook():
     update = request.get_json(force=True)
     if update:
         upd = types.Update.de_json(update)
         bot.process_new_updates([upd])
+    return "OK", 200
+
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 5000))
+    bot.remove_webhook()
+    webhook_url = f"https://{os.environ.get('RAILWAY_STATIC_URL')
