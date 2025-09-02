@@ -245,13 +245,13 @@ def cmds(message):
   
     markup_buttom = InlineKeyboardMarkup(buttons_cmds)
     text = "<b>𝐄𝐒𝐓𝐀𝐒 𝐄𝐍 𝐋𝐀 𝐒𝐄𝐒𝐈𝐎𝐍  𝐃𝐄 𝐂𝐎𝐌𝐀𝐍𝐃𝐎𝐒</b>"
-    phot = open('photo.jpg', 'rb')
+    phot = "https://i.imgur.com/XB5j3Dk.jpeg"  # Imagen de Imgur
     bot.send_photo(chat_id = message.chat.id, photo=phot, caption = text, reply_to_message_id = message.id, reply_markup=markup_buttom)
 
 
 @bot.message_handler(commands=['start'])
 def start(message):
-    phot = open('photo2.jpg', 'rb')
+    phot = "https://i.imgur.com/XB5j3Dk.jpeg"  # Imagen de Imgur
     text = f"""
 <b>⚠️𝐁𝐢𝐞𝐧𝐯𝐞𝐧𝐢𝐝𝐨 𝐚 𝐃𝐮𝐥𝐮𝐱𝐞𝐂𝐡𝐤⚠️</b>
 ╸╸╸╸╸╸╸╸╸╸╸╸╸╸╸╸╸╸╸╸╸
@@ -305,7 +305,7 @@ def gate(message):
 
 @bot.message_handler(commands=['Deluxe'])
 def deluxe(message):
-    phot = open('photo.jpg', 'rb')
+    phot = "https://i.imgur.com/XB5j3Dk.jpeg"  # Imagen de Imgur
     text = f"""
 ⚠️¡Duluxe Chk (términos y condiciones)  
 
