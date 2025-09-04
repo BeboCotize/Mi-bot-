@@ -185,13 +185,15 @@ def gate_sagepay(message):
     cc, mes, ano, cvv = parts[0:4]
 
     try:
-        gateway = sagepay(f"{cc}|{mes}|{ano}|{cvv}")
-        print("DEBUG sagepay() ->", gateway)
+        result = sagepay(f"{cc}|{mes}|{ano}|{cvv}")   # ahora devuelve solo el resultado limpio
+        print("DEBUG sagepay() ->", result)
 
-        text = f"""💳 {cc}|{mes}|{ano}|{cvv}
-📌 RESPUESTA: {gateway}"""
+        text = f"""
+💳 <code>{cc}|{mes}|{ano}|{cvv}</code>
+📌 RESULT: <b>{result}</b>
+"""
     except Exception as e:
-        text = f"❌ Error ejecutando gateway SagePay: {e}"
+        text = f"❌ Error ejecutando gateway SagePay:\n{e}"
 
     bot.reply_to(message, text)
 
