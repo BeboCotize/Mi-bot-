@@ -263,7 +263,10 @@ def webhook():
 
 if __name__ == "__main__":
     PORT = int(os.getenv("PORT", 5000))
-    APP_URL = os.getenv("RAILWAY_URL")
+    APP_URL = os.getenv("APP_URL")  # <-- debe estar en Variables de Railway
+
+    if not APP_URL:
+        raise ValueError("APP_URL no está definida en Railway Variables")
 
     bot.remove_webhook()
     bot.set_webhook(url=f"{APP_URL}/{TOKEN}")
