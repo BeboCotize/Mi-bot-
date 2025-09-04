@@ -52,21 +52,24 @@ def binlist(bin: str) -> tuple | bool:
         return False
 
 def dir_fake():
-    peticion = requests.get('https://random-data-api.com/api/v2/users')
     try:
-        data = peticion.json()
-        return (
-            data['first_name'],
-            data['last_name'],
-            data['phone_number'],
-            data['address']['city'],
-            data['address']['street_name'],
-            data['address']['street_address'],
-            data['address']['zip_code'],
-            data['address']['state'],
-            data['address']['country']
-        )
-    except:
+        r = requests.get('https://random-data-api.com/api/v2/users', timeout=10)
+        if r.status_code != 200:
+            return None
+        data = r.json()
+        return {
+            "first_name": data.get("first_name", "N/A"),
+            "last_name": data.get("last_name", "N/A"),
+            "phone": data.get("phone_number", "N/A"),
+            "city": data.get("address", {}).get("city", "N/A"),
+            "street_name": data.get("address", {}).get("street_name", "N/A"),
+            "street_address": data.get("address", {}).get("street_address", "N/A"),
+            "zip": data.get("address", {}).get("zip_code", "N/A"),
+            "state": data.get("address", {}).get("state", "N/A"),
+            "country": data.get("address", {}).get("country", "N/A"),
+        }
+    except Exception as e:
+        print("Error en dir_fake:", e)
         return None
 
 
@@ -109,14 +112,15 @@ def rand(message):
         return bot.reply_to(message, 'No estás autorizado.')
 
     data = dir_fake()
-    if data is None:
-        return bot.reply_to(message, 'Error en la API de dirección.')
+    if not data:
+        return bot.reply_to(message, '⚠️ Error obteniendo dirección.')
 
     texto = f"""
-👤 {data[0]} {data[1]}
-📞 {data[2]}
-🏙️ {data[3]}, {data[7]}, {data[8]}
-📍 {data[5]}, {data[4]}, CP {data[6]}
+👤 {data['first_name']} {data['last_name']}
+📞 {data['phone']}
+🏙️ {data['city']}, {data['state']}, {data['country']}
+📍 {data['street_address']} ({data['street_name']})
+🆔 CP: {data['zip']}
 """
     bot.reply_to(message, texto)
 
@@ -170,6 +174,8 @@ def gate(message):
     parts = re.split(r"[| ]+", raw_text.replace("/bw", "").replace("/br", "").strip())
     CARD_INPUT = [p for p in parts if p.isdigit()]
 
+    print("CARD_INPUT:", CARD_INPUT)
+
     if len(CARD_INPUT) != 4:
         return bot.reply_to(
             message,
@@ -183,9 +189,8 @@ def gate(message):
 
     try:
         gateway = bw(cc, mes, ano, cvv)
-        print("DEBUG bw() ->", gateway)  # 👈 aparece en logs de Railway
+        print("DEBUG bw() ->", gateway)
 
-        # Responder según lo que devuelva
         if isinstance(gateway, dict):
             status = gateway.get("status", "Sin respuesta")
             result = gateway.get("result", "Sin detalle")
@@ -258,7 +263,7 @@ def webhook():
 
 if __name__ == "__main__":
     PORT = int(os.getenv("PORT", 5000))
-    APP_URL = os.getenv("APP_URL")  # Defínela en Railway
+    APP_URL = os.getenv("APP_URL")
 
     if not APP_URL:
         raise ValueError("APP_URL no está definida en Railway Variables")
