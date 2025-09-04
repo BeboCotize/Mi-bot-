@@ -8,9 +8,8 @@ import json
 from flask import Flask, request
 from telebot import TeleBot, types
 from cc_gen import cc_gen
-from sqldb import *
 from braintree import bw
-import enums 
+import enums
 
 # ==============================
 # CONFIGURACIÓN
@@ -25,9 +24,9 @@ USERS = [
     '1934704808', '6011359218', '1944708963', '5111870793'
 ]
 
-# Fotos (Imgur links)
-IMG_PHOTO1 = "https://imgur.com/a/Lg1SmRY"  # reemplaza
-IMG_PHOTO2 = "https://imgur.com/a/Lg1SmRY"  # reemplaza
+# Fotos en Imgur (cambia por tus enlaces)
+IMG_PHOTO1 = "https://i.imgur.com/XXXXXXX.jpg"
+IMG_PHOTO2 = "https://i.imgur.com/YYYYYYY.jpg"
 
 # Flask app para webhook
 app = Flask(__name__)
@@ -135,7 +134,6 @@ def gen(message):
     if not inputcc:
         return bot.reply_to(message, "Formato incorrecto.")
 
-    # Procesar inputs
     cc = inputcc[0]
     mes = inputcc[1][0:2] if len(inputcc) > 1 else "xx"
     ano = inputcc[2] if len(inputcc) > 2 else "xxxx"
@@ -171,22 +169,16 @@ def gate(message):
     if not ver_user(str(message.from_user.id)):
         return bot.reply_to(message, 'No estás autorizado.')
 
-    # Detectar si se envía como reply o en el propio mensaje
-    if message.reply_to_message:
-        raw_text = str(message.reply_to_message.text)
-    else:
-        raw_text = str(message.text)
-
-    # Extraer números separados por espacio o por pipes
+    raw_text = message.reply_to_message.text if message.reply_to_message else message.text
     parts = re.split(r"[| ]+", raw_text.replace("/bw", "").replace("/br", "").strip())
     CARD_INPUT = [p for p in parts if p.isdigit()]
 
-    print("CARD_INPUT:", CARD_INPUT)  # Debug en Railway logs
+    print("CARD_INPUT:", CARD_INPUT)  # Debug en logs
 
     if len(CARD_INPUT) != 4:
         return bot.reply_to(
             message,
-            "Formato inválido.\nEjemplos válidos:\n"
+            "⚠️ Formato inválido.\nEjemplos:\n"
             "`/bw 4111111111111111 12 2026 123`\n"
             "`/bw 4111111111111111|12|2026|123`",
             parse_mode="Markdown"
@@ -194,30 +186,16 @@ def gate(message):
 
     cc, mes, ano, cvv = CARD_INPUT
 
-    # Anti-spam con DB
-    sql = f"SELECT * FROM spam WHERE user = {int(message.from_user.id)}"
-    consulta_dbq = consulta_db(sql)
+    try:
+        gateway = bw(cc, mes, ano, cvv)
+        status = gateway.get("status", "Sin respuesta")
+        result = gateway.get("result", "Sin detalle")
+    except Exception as e:
+        return bot.reply_to(message, f"❌ Error ejecutando gateway: {e}")
 
-    if consulta_dbq:
-        SPAM_DEFINED = 30
-        time_db = int(consulta_dbq[1])
-        tiempo_spam = int(time.time()) - time_db
-        if tiempo_spam < SPAM_DEFINED:
-            tiempo_restante = SPAM_DEFINED - tiempo_spam
-            return bot.reply_to(message, f'⏳ Espera {tiempo_restante}s para volver a usar.')
-
-        sql = f"UPDATE spam SET spam_time = {int(time.time())} WHERE user = {int(message.from_user.id)}"
-        update_into(sql)
-    else:
-        sql = f"INSERT INTO spam VALUES({int(message.from_user.id)}, {int(time.time())})"
-        insert_into(sql)
-        return bot.reply_to(message, '✅ Registrado en DB, vuelve a intentar.')
-
-    # Ejecutar gateway
-    gateway = bw(cc, mes, ano, cvv)
     text = f"""💳 {cc}|{mes}|{ano}|{cvv}
-📌 STATUS: {gateway['status']}
-📌 RESULT: {gateway['result']}"""
+📌 STATUS: {status}
+📌 RESULT: {result}"""
     bot.reply_to(message, text)
 
 
@@ -279,7 +257,7 @@ def webhook():
 
 if __name__ == "__main__":
     PORT = int(os.getenv("PORT", 5000))
-    APP_URL = os.getenv("APP_URL")  # <-- debe estar en Variables de Railway
+    APP_URL = os.getenv("APP_URL")  # Defínela en Railway
 
     if not APP_URL:
         raise ValueError("APP_URL no está definida en Railway Variables")
