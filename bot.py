@@ -7,12 +7,12 @@ from cc_gen import cc_gen
 from sqldb import *
 import enums
 import json 
-from flask import Flask, request 
+from flask import Flask, request
 
 # =============================
 #   CONFIG BOT
 # =============================
-TOKEN = os.getenv("BOT_TOKEN", "8271445453:AAE7sVaxjpSVHNxCwbiHFKK2cxjK8vxuDsI")
+TOKEN = os.getenv("BOT_TOKEN", "TOKEN_AQUI")
 bot = TeleBot(TOKEN, parse_mode='HTML')
 app = Flask(__name__)
 
@@ -131,8 +131,104 @@ def rand(message):
 
 @bot.message_handler(commands=['gen'])
 def gen(message):
-    # (tu código original completo de gen está aquí sin cambios)
-    pass
+    userid = message.from_user.id
+    
+    if ver_user(str(userid)) == False:
+        bot.reply_to(message, 'No estas autorizado, contacta @colale1k.')
+    else:
+        inputcc = re.findall(r'[0-9x]+', message.text)
+        if not inputcc: return bot.reply_to(message, "extra no reconocida")
+        else:
+            if len( inputcc )  ==  1:
+                cc  = inputcc[0]
+                mes = 'xx'
+                ano = 'xxxx'
+                cvv = 'rnd'
+                
+            elif len( inputcc )  == 2:
+                cc  = inputcc[0]
+                mes = inputcc[1][0:2]
+                ano = 'xxxx'
+                cvv = 'rnd'
+
+            elif len( inputcc )  ==  3:
+                cc  = inputcc[0]
+                mes = inputcc[1][0:2]
+                ano = inputcc[2]
+                cvv = 'rnd'
+
+            elif len(  inputcc  )  ==  4:
+                cc  = inputcc[0]
+                mes = inputcc[1][0:2]
+                ano = inputcc[2]
+                cvv = inputcc[3]
+                
+            else:
+                cc  = inputcc[0]
+                mes = inputcc[1][0:2]
+                ano = inputcc[2]
+                cvv = inputcc[3]
+                
+            if len(inputcc[0]) < 6: return bot.reply_to(message, "extra incompleta")
+            else:
+                bin_number = cc[0:6]
+                if cc.isdigit() == True:
+                        cc = cc[0:12]
+                else:
+                    cc = cc
+                
+                if mes.isdigit():
+                        if ano.isdigit():
+                            if len(ano) == 2: ano = '20'+ano
+                            IST = pytz.timezone('US/Central')
+                            now = datetime.datetime.now(IST)
+                            if ((datetime.datetime.strptime(now.strftime("%m-%Y"), "%m-%Y") <= datetime.datetime.strptime(f'{mes}-{ano}', "%m-%Y"))) == False:
+                                bot.reply_to(message, "fecha incorrecta")
+                
+                card = cc_gen(cc, mes, ano, cvv)
+                if card:
+                    cc1,cc2,cc3,cc4,cc5,cc6,cc7,cc8,cc9,cc10 = card
+
+                    extra = str(cc) + 'xxxxxxxxxxxxxxxxxxxxxxx'
+                    if mes == 'xx' or mes == 'rnd': mes_2 = mes
+                    else: mes_2 = mes
+                    if ano == 'xxxx' or ano == 'rnd': ano_2 = ano
+                    else: 
+                        ano_2 = ano
+                        if len(ano_2) == 2: ano_2 = '20'+ano_2
+                        else: ano_2 = ano_2
+                    if cvv == 'xxx' or cvv == 'rnd'or ano == 'xxxx': cvv_2 = cvv
+                    else:  cvv_2 = cvv
+
+                    binsito = binlist(bin_number)
+                    if binsito[0] != None:
+                        text = f"""
+🇩🇴DEMON SLAYER GENERATOR🇩🇴
+⚙️───π────────⚙️
+⚙️───π────────⚙️
+
+<code>{cc1.strip()}</code>
+<code>{cc2.strip()}</code>
+<code>{cc3.strip()}</code>
+<code>{cc4.strip()}</code>
+<code>{cc5.strip()}</code>
+<code>{cc6.strip()}</code>
+<code>{cc7.strip()}</code>
+<code>{cc8.strip()}</code>
+<code>{cc9.strip()}</code>
+<code>{cc10.strip()}</code>
+
+𝗕𝗜𝗡 𝗜𝗡𝗙𝗢: {binsito[1]} - {binsito[2]} - {binsito[3]}
+𝗖𝗢𝗨𝗡𝗧𝗥𝗬: {binsito[4]} - {binsito[5]}
+𝗕𝗔𝗡𝗞: {binsito[6]}
+
+𝗘𝗫𝗧𝗥𝗔: <code>{extra[0:16]}|{mes_2}|{ano_2}|{cvv_2}</code>
+"""
+                        bot.send_message(chat_id = message.chat.id, text = text, reply_to_message_id = message.id)
+                    else:
+                        bot.reply_to(message, "error bin incorrecto")
+                else:
+                    bot.reply_to(message, "error al generar")
 
 
 @bot.message_handler(commands=['cmds'])
@@ -170,14 +266,76 @@ def start(message):
 
 @bot.message_handler(commands=['bw'])
 def gate_bw(message):
-    # (tu código original de bw aquí sin cambios)
-    pass
+    if ver_user(str(message.from_user.id)) != False:
+        if message.reply_to_message:
+            CARD_INPUT = re.findall(r'[0-9]+', str(message.reply_to_message.text))
+        else:
+            CARD_INPUT = re.findall(r'[0-9]+', str(message.text))
+
+        if len(CARD_INPUT) == 4:         
+
+            sql = """SELECT * FROM spam WHERE user = {}""".format(int(message.from_user.id))
+            consulta_dbq = consulta_db(sql)
+            if consulta_dbq != None:
+                SPAM_DEFINED = 30
+                time_db = int(consulta_dbq[1])
+                tiempo_spam = int(time.time()) - time_db
+                if tiempo_spam < SPAM_DEFINED:
+                    tiempo_restante =  SPAM_DEFINED - tiempo_spam
+                    bot.reply_to(message, f'ANTISPAM ACTIVADO, INTENTA EN {tiempo_restante} SEGUNDOS.')
+
+                else:
+                    cc, mes, ano, cvv = CARD_INPUT[0], CARD_INPUT[1], CARD_INPUT[2], CARD_INPUT[3]
+                    sql = """UPDATE spam SET spam_time = {} WHERE user = {}""".format(int(time.time()), int(message.from_user.id))
+                    update_time = update_into(sql)
+                    gateway = bw(cc, mes, ano, cvv)
+                    text = f"""CARD = {cc}|{mes}|{ano}|{cvv}\nSTATUS = {gateway['status']}\nRESPONSE = {gateway['result']}"""
+                    bot.reply_to(message, text)
+            
+            else:
+                spam_time = int(time.time())
+                sql = """INSERT INTO spam VALUES({}, {})""".format(int(message.from_user.id), spam_time)
+                insert = insert_into(sql)
+                bot.reply_to(message, 'USTED AH SIDO REGISTRADO EN LA DB, INTENTA CHEQUEAR DE NUEVO.')
+        else:
+            bot.reply_to(message, 'LA TARJETA ESTA INCOMPLETA.')
+    else:
+        bot.reply_to(message, 'No estas autorizado, contacta @colale1k.')
 
 
 @bot.message_handler(commands=['br'])
 def gate_br(message):
-    # (tu código original de br aquí sin cambios)
-    pass
+    if ver_user(str(message.from_user.id)) != False:
+        if message.reply_to_message:
+            CARD_INPUT = re.findall(r'[0-9]+', str(message.reply_to_message.text))
+        else:
+            CARD_INPUT = re.findall(r'[0-9]+', str(message.text))
+
+        if len(CARD_INPUT) == 4:         
+            sql = """SELECT * FROM spam WHERE user = {}""".format(int(message.from_user.id))
+            consulta_dbq = consulta_db(sql)
+            if consulta_dbq != None:
+                SPAM_DEFINED = 30
+                time_db = int(consulta_dbq[1])
+                tiempo_spam = int(time.time()) - time_db
+                if tiempo_spam < SPAM_DEFINED:
+                    tiempo_restante =  SPAM_DEFINED - tiempo_spam
+                    bot.reply_to(message, f'ANTISPAM ACTIVADO, INTENTA EN {tiempo_restante} SEGUNDOS.')
+                else:
+                    cc, mes, ano, cvv = CARD_INPUT[0], CARD_INPUT[1], CARD_INPUT[2], CARD_INPUT[3]
+                    sql = """UPDATE spam SET spam_time = {} WHERE user = {}""".format(int(time.time()), int(message.from_user.id))
+                    update_time = update_into(sql)
+                    text = f"""CARD = {cc}|{mes}|{ano}|{cvv}\nSTATUS = OK\nRESPONSE = Gateway BR ejecutada correctamente"""
+                    bot.reply_to(message, text)
+            else:
+                spam_time = int(time.time())
+                sql = """INSERT INTO spam VALUES({}, {})""".format(int(message.from_user.id), spam_time)
+                insert = insert_into(sql)
+                bot.reply_to(message, 'USTED AH SIDO REGISTRADO EN LA DB, INTENTA CHEQUEAR DE NUEVO.')
+        else:
+            bot.reply_to(message, 'LA TARJETA ESTA INCOMPLETA.')
+    else:
+        bot.reply_to(message, 'No estas autorizado, contacta @colale1k.')
 
 
 @bot.message_handler(commands=['Deluxe'])
@@ -218,6 +376,6 @@ def webhook():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     bot.remove_webhook()
-    webhook_url = f"https://{os.environ.get('RAILWAY_STATIC_URL', '')}/{TOKEN}"
+    webhook_url = f"https://{os.environ.get('RAILWAY_STATIC_URL')}/{TOKEN}"
     bot.set_webhook(url=webhook_url)
     app.run(host="0.0.0.0", port=port)
