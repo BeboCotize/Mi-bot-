@@ -7,7 +7,7 @@ from cc_gen import cc_gen
 from sqldb import *
 import enums
 import json 
-from flask import Flask, request
+from flask import Flask, request 
 
 # =============================
 #   CONFIG BOT
