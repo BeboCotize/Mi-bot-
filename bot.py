@@ -166,20 +166,35 @@ def gen(message):
     bot.send_message(chat_id=message.chat.id, text=text, reply_to_message_id=message.id)
 
 
-@bot.message_handler(commands=['bw'])
+@bot.message_handler(commands=['bw', 'br'])
 def gate(message):
     if not ver_user(str(message.from_user.id)):
         return bot.reply_to(message, 'No estás autorizado.')
 
+    # Detectar si se envía como reply o en el propio mensaje
     if message.reply_to_message:
-        CARD_INPUT = re.findall(r'[0-9]+', str(message.reply_to_message.text))
+        raw_text = str(message.reply_to_message.text)
     else:
-        CARD_INPUT = re.findall(r'[0-9]+', str(message.text))
+        raw_text = str(message.text)
+
+    # Extraer números separados por espacio o por pipes
+    parts = re.split(r"[| ]+", raw_text.replace("/bw", "").replace("/br", "").strip())
+    CARD_INPUT = [p for p in parts if p.isdigit()]
+
+    print("CARD_INPUT:", CARD_INPUT)  # Debug en Railway logs
 
     if len(CARD_INPUT) != 4:
-        return bot.reply_to(message, "Formato: /bw 4111111111111111 12 2026 123")
+        return bot.reply_to(
+            message,
+            "Formato inválido.\nEjemplos válidos:\n"
+            "`/bw 4111111111111111 12 2026 123`\n"
+            "`/bw 4111111111111111|12|2026|123`",
+            parse_mode="Markdown"
+        )
 
     cc, mes, ano, cvv = CARD_INPUT
+
+    # Anti-spam con DB
     sql = f"SELECT * FROM spam WHERE user = {int(message.from_user.id)}"
     consulta_dbq = consulta_db(sql)
 
@@ -189,15 +204,16 @@ def gate(message):
         tiempo_spam = int(time.time()) - time_db
         if tiempo_spam < SPAM_DEFINED:
             tiempo_restante = SPAM_DEFINED - tiempo_spam
-            return bot.reply_to(message, f'Espera {tiempo_restante}s para volver a usar.')
+            return bot.reply_to(message, f'⏳ Espera {tiempo_restante}s para volver a usar.')
 
         sql = f"UPDATE spam SET spam_time = {int(time.time())} WHERE user = {int(message.from_user.id)}"
         update_into(sql)
     else:
         sql = f"INSERT INTO spam VALUES({int(message.from_user.id)}, {int(time.time())})"
         insert_into(sql)
-        return bot.reply_to(message, 'Registrado en DB, vuelve a intentar.')
+        return bot.reply_to(message, '✅ Registrado en DB, vuelve a intentar.')
 
+    # Ejecutar gateway
     gateway = bw(cc, mes, ano, cvv)
     text = f"""💳 {cc}|{mes}|{ano}|{cvv}
 📌 STATUS: {gateway['status']}
