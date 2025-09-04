@@ -1,15 +1,10 @@
 import os
-import time
-import requests
 import re
-import datetime
-import pytz
-import json
+import requests
 from flask import Flask, request
 from telebot import TeleBot, types
 from cc_gen import cc_gen
 from braintree import bw
-import enums
 
 # ==============================
 # CONFIGURACIÓN
@@ -52,21 +47,22 @@ def binlist(bin: str) -> tuple | bool:
         return False
 
 def dir_fake():
+    """Genera una dirección usando randomuser.me (más estable)."""
     try:
-        r = requests.get('https://random-data-api.com/api/v2/users', timeout=10)
+        r = requests.get("https://randomuser.me/api/", timeout=10)
         if r.status_code != 200:
             return None
-        data = r.json()
+        data = r.json()["results"][0]
         return {
-            "first_name": data.get("first_name", "N/A"),
-            "last_name": data.get("last_name", "N/A"),
-            "phone": data.get("phone_number", "N/A"),
-            "city": data.get("address", {}).get("city", "N/A"),
-            "street_name": data.get("address", {}).get("street_name", "N/A"),
-            "street_address": data.get("address", {}).get("street_address", "N/A"),
-            "zip": data.get("address", {}).get("zip_code", "N/A"),
-            "state": data.get("address", {}).get("state", "N/A"),
-            "country": data.get("address", {}).get("country", "N/A"),
+            "first_name": data["name"]["first"],
+            "last_name": data["name"]["last"],
+            "phone": data["phone"],
+            "city": data["location"]["city"],
+            "street_name": data["location"]["street"]["name"],
+            "street_address": str(data["location"]["street"]["number"]),
+            "zip": str(data["location"]["postcode"]),
+            "state": data["location"]["state"],
+            "country": data["location"]["country"],
         }
     except Exception as e:
         print("Error en dir_fake:", e)
@@ -119,7 +115,7 @@ def rand(message):
 👤 {data['first_name']} {data['last_name']}
 📞 {data['phone']}
 🏙️ {data['city']}, {data['state']}, {data['country']}
-📍 {data['street_address']} ({data['street_name']})
+📍 {data['street_address']} {data['street_name']}
 🆔 CP: {data['zip']}
 """
     bot.reply_to(message, texto)
@@ -171,12 +167,10 @@ def gate(message):
         return bot.reply_to(message, 'No estás autorizado.')
 
     raw_text = message.reply_to_message.text if message.reply_to_message else message.text
-    parts = re.split(r"[| ]+", raw_text.replace("/bw", "").replace("/br", "").strip())
-    CARD_INPUT = [p for p in parts if p.isdigit()]
+    clean = raw_text.replace("/bw", "").replace("/br", "").strip()
+    parts = re.split(r"[| \n\t]+", clean)
 
-    print("CARD_INPUT:", CARD_INPUT)
-
-    if len(CARD_INPUT) != 4:
+    if len(parts) < 4:
         return bot.reply_to(
             message,
             "⚠️ Formato inválido.\nEjemplos:\n"
@@ -185,20 +179,15 @@ def gate(message):
             parse_mode="Markdown"
         )
 
-    cc, mes, ano, cvv = CARD_INPUT
+    cc, mes, ano, cvv = parts[0:4]
 
     try:
         gateway = bw(cc, mes, ano, cvv)
-        print("DEBUG bw() ->", gateway)
-
-        if isinstance(gateway, dict):
-            status = gateway.get("status", "Sin respuesta")
-            result = gateway.get("result", "Sin detalle")
-            text = f"""💳 {cc}|{mes}|{ano}|{cvv}
+        status = gateway.get("status", "Sin respuesta")
+        result = gateway.get("result", "Sin detalle")
+        text = f"""💳 {cc}|{mes}|{ano}|{cvv}
 📌 STATUS: {status}
 📌 RESULT: {result}"""
-        else:
-            text = f"💳 {cc}|{mes}|{ano}|{cvv}\n📌 Respuesta:\n{gateway}"""
     except Exception as e:
         text = f"❌ Error ejecutando gateway: {e}"
 
