@@ -4,7 +4,7 @@ import requests
 from flask import Flask, request
 from telebot import TeleBot, types
 from cc_gen import cc_gen
-from braintree import bw
+from sagepay import sagepay   # 👈 Importamos tu función SagePay
 
 # ==============================
 # CONFIGURACIÓN
@@ -161,35 +161,41 @@ def gen(message):
     bot.send_message(chat_id=message.chat.id, text=text, reply_to_message_id=message.id)
 
 
-@bot.message_handler(commands=['bw', 'br'])
-def gate(message):
+@bot.message_handler(commands=['sagepay'])
+def gate_sagepay(message):
     if not ver_user(str(message.from_user.id)):
         return bot.reply_to(message, 'No estás autorizado.')
 
     raw_text = message.reply_to_message.text if message.reply_to_message else message.text
-    clean = raw_text.replace("/bw", "").replace("/br", "").strip()
+    clean = raw_text.replace("/sagepay", "").strip()
     parts = re.split(r"[| \n\t]+", clean)
 
     if len(parts) < 4:
         return bot.reply_to(
             message,
             "⚠️ Formato inválido.\nEjemplos:\n"
-            "`/bw 4111111111111111 12 2026 123`\n"
-            "`/bw 4111111111111111|12|2026|123`",
+            "`/sagepay 4111111111111111 12 2026 123`\n"
+            "`/sagepay 4111111111111111|12|2026|123`",
             parse_mode="Markdown"
         )
 
     cc, mes, ano, cvv = parts[0:4]
 
     try:
-        gateway = bw(cc, mes, ano, cvv)
-        status = gateway.get("status", "Sin respuesta")
-        result = gateway.get("result", "Sin detalle")
-        text = f"""💳 {cc}|{mes}|{ano}|{cvv}
+        gateway = sagepay(cc, mes, ano, cvv)
+        print("DEBUG sagepay() ->", gateway)
+
+        if isinstance(gateway, dict):
+            status = gateway.get("status", "Sin respuesta")
+            result = gateway.get("result", "Sin detalle")
+            text = f"""💳 {cc}|{mes}|{ano}|{cvv}
 📌 STATUS: {status}
 📌 RESULT: {result}"""
+        else:
+            text = f"""💳 {cc}|{mes}|{ano}|{cvv}
+📌 Respuesta cruda: {gateway}"""
     except Exception as e:
-        text = f"❌ Error ejecutando gateway: {e}"
+        text = f"❌ Error ejecutando gateway SagePay: {e}"
 
     bot.reply_to(message, text)
 
