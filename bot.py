@@ -25,8 +25,8 @@ USERS = [
     '6629555218']
 
 # Imágenes en Imgur (cambia por tus links)
-IMG_PHOTO1 = "https://i.imgur.com/XXXXXXX.jpg"  # reemplazar
-IMG_PHOTO2 = "https://i.imgur.com/YYYYYYY.jpg"  # reemplazar
+IMG_PHOTO1 = "https://imgur.com/a/Lg1SmRY"  # reemplazar
+IMG_PHOTO2 = "https://imgur.com/a/Lg1SmRY"  # reemplazar
 
 
 # ==============================
