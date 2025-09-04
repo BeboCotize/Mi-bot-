@@ -4,7 +4,7 @@ import requests
 from flask import Flask, request
 from telebot import TeleBot, types
 from cc_gen import cc_gen
-from sagepay import ccn_gate   # 👈 Importamos tu función SagePay
+from sagepay import sagepay   # 👈 Importamos tu función SagePay
 
 # ==============================
 # CONFIGURACIÓN
