@@ -6,3 +6,4 @@ enums
 flask
 faker
 curl_cffi
+faker_useragent
