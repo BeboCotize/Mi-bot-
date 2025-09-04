@@ -170,8 +170,6 @@ def gate(message):
     parts = re.split(r"[| ]+", raw_text.replace("/bw", "").replace("/br", "").strip())
     CARD_INPUT = [p for p in parts if p.isdigit()]
 
-    print("CARD_INPUT:", CARD_INPUT)  # Debug en logs
-
     if len(CARD_INPUT) != 4:
         return bot.reply_to(
             message,
@@ -185,14 +183,20 @@ def gate(message):
 
     try:
         gateway = bw(cc, mes, ano, cvv)
-        status = gateway.get("status", "Sin respuesta")
-        result = gateway.get("result", "Sin detalle")
-    except Exception as e:
-        return bot.reply_to(message, f"❌ Error ejecutando gateway: {e}")
+        print("DEBUG bw() ->", gateway)  # 👈 aparece en logs de Railway
 
-    text = f"""💳 {cc}|{mes}|{ano}|{cvv}
+        # Responder según lo que devuelva
+        if isinstance(gateway, dict):
+            status = gateway.get("status", "Sin respuesta")
+            result = gateway.get("result", "Sin detalle")
+            text = f"""💳 {cc}|{mes}|{ano}|{cvv}
 📌 STATUS: {status}
 📌 RESULT: {result}"""
+        else:
+            text = f"💳 {cc}|{mes}|{ano}|{cvv}\n📌 Respuesta:\n{gateway}"""
+    except Exception as e:
+        text = f"❌ Error ejecutando gateway: {e}"
+
     bot.reply_to(message, text)
 
 
