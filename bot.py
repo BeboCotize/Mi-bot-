@@ -4,7 +4,7 @@ import requests
 from flask import Flask, request
 from telebot import TeleBot, types
 from cc_gen import cc_gen
-from sagepay import sagepay   # 👈 Importamos tu función SagePay
+from sagepay import ccn_gate as sagepay   # 👈 importamos tu función y la usamos como "sagepay"
 
 # ==============================
 # CONFIGURACIÓN
@@ -14,7 +14,10 @@ TOKEN = os.getenv("BOT_TOKEN")
 bot = TeleBot(TOKEN, parse_mode='HTML')
 
 USERS = [
-    '6629555218']
+    '6629555218', '1073258864', '5147213203',
+    '5566291364', '6312955408', '5692739235',
+    '1934704808', '6011359218', '1944708963', '5111870793'
+]
 
 # Fotos en Imgur (cambia por tus enlaces)
 IMG_PHOTO1 = "https://i.imgur.com/XXXXXXX.jpg"
@@ -182,18 +185,11 @@ def gate_sagepay(message):
     cc, mes, ano, cvv = parts[0:4]
 
     try:
-        gateway = sagepay(cc, mes, ano, cvv)
+        gateway = sagepay(f"{cc}|{mes}|{ano}|{cvv}")
         print("DEBUG sagepay() ->", gateway)
 
-        if isinstance(gateway, dict):
-            status = gateway.get("status", "Sin respuesta")
-            result = gateway.get("result", "Sin detalle")
-            text = f"""💳 {cc}|{mes}|{ano}|{cvv}
-📌 STATUS: {status}
-📌 RESULT: {result}"""
-        else:
-            text = f"""💳 {cc}|{mes}|{ano}|{cvv}
-📌 Respuesta cruda: {gateway}"""
+        text = f"""💳 {cc}|{mes}|{ano}|{cvv}
+📌 RESPUESTA: {gateway}"""
     except Exception as e:
         text = f"❌ Error ejecutando gateway SagePay: {e}"
 
