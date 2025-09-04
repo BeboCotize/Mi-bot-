@@ -5,3 +5,4 @@ colorama
 enums
 flask
 faker
+curl_cffi
