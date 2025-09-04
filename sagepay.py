@@ -108,7 +108,7 @@ if __name__ == "__main__":
     lines = file.readlines()
     for position, x in enumerate(lines):
         cc, mes, ano, cvv = x.split("|")
-        gateway = ccn_gate(f"{cc}|{mes}|{ano}|{cvv.strip()}")
+        gateway = sagepay(f"{cc}|{mes}|{ano}|{cvv.strip()}")
         print(gateway)
         with open('cards.txt', "w")as f:
             f.writelines(lines[position+1:])
