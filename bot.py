@@ -7,7 +7,7 @@ from cc_gen import cc_gen
 from sagepay import ccn_gate as sagepay   # 👈 importamos tu función y la usamos como "sagepay"
  
 # ==============================
-# CONFIGURACIÓN
+# CONFIGURACIÓN 
 # ==============================
 
 TOKEN = os.getenv("BOT_TOKEN")
