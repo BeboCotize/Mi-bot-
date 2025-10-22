@@ -4,8 +4,8 @@ import requests
 from flask import Flask, request
 from telebot import TeleBot, types
 from cc_gen import cc_gen
-from sagepay import ccn_gate as sagepay   # Importación del gateway SagePay
-from gateway import ccn_gate as bb_gateway_check # 👈 NUEVA IMPORTACIÓN: Tu nuevo gateway en el archivo 'gateway.py'
+from sagepay import ccn_gate as sagepay   # Importación del gateway SagePay (original)
+from gateway import ccn_gate as bb_gateway_check # 👈 TU NUEVA IMPORTACIÓN (desde gateway.py)
  
 # ==============================
 # CONFIGURACIÓN 
@@ -164,13 +164,13 @@ def gen(message):
 
 @bot.message_handler(commands=['bb'])
 def gate_bb(message):
-    # Lógica de autorización
-    if not ver_user(str(message.from_user.id)):
+    userid = str(message.from_user.id)
+    if not ver_user(userid):
         return bot.reply_to(message, 'No estás autorizado.')
 
     # 1. Preparar el texto de entrada (asume el formato CC|MM|AAAA|CVV)
     raw_text = message.reply_to_message.text if message.reply_to_message else message.text
-    clean = raw_text.replace("/bb", "").strip() # Quitamos el comando /bb del texto
+    clean = raw_text.replace("/bb", "").strip() 
     parts = re.split(r"[| \n\t]+", clean)
 
     if len(parts) < 4:
@@ -182,25 +182,52 @@ def gate_bb(message):
         )
 
     cc, mes, ano, cvv = parts[0:4]
-
-    # 2. Llamar a la NUEVA función del gateway
+    
+    # Notificamos que vamos a chequear
     bot.reply_to(message, "⚙️ Chequeando con BB Gateway...") 
 
     try:
-        # LLAMADA A TU NUEVO GATEWAY BB
-        result = bb_gateway_check(f"{cc}|{mes}|{ano}|{cvv}")
-        print("DEBUG bb_gateway_check() ->", result)
-
-        # Usamos el resultado devuelto por tu función
+        # LLAMADA A TU GATEWAY MODIFICADO (devuelve string con status)
+        status_message = bb_gateway_check(f"{cc}|{mes}|{ano}|{cvv}")
+        
+        # 2. Parseamos el resultado para darle formato de la captura
+        
+        if "APROBADO" in status_message or "APPROVED" in status_message:
+            status = "APPROVED"
+            emoji = "✅"
+            # Tomamos el detalle después del ':'
+            message_detail = status_message.split(":")[-1].strip()
+        elif "DECLINADO" in status_message or "DECLINED" in status_message:
+            status = "DECLINED"
+            emoji = "❌"
+            message_detail = status_message.split(":")[-1].strip()
+        else:
+            status = "ERROR"
+            emoji = "⚠️"
+            message_detail = status_message
+            
+        # 3. Obtenemos información adicional para el formato
+        bin_number = cc[0:6]
+        binsito = binlist(bin_number)
+        
+        # 4. Creamos el mensaje final con el formato deseado
         text = f"""
-💳 <code>{cc}|{mes}|{ano}|{cvv}</code>
-📌 RESULT (BB GATEWAY): <b>¡Revisa tus logs o el archivo live.txt!</b>
+{emoji} CARD --> <code>{cc}|{mes}|{ano}|{cvv}</code>
+{emoji} STATUS --> <b>{status}</b> {emoji}
+{emoji} MESSAGE --> <b>{message_detail}</b>
+[GATEWAY] <b>[BB Gateway]</b>
+
+[BIN INFO]
+{emoji} BIN --> <b>{binsito[1]} {binsito[2]}</b>
+{emoji} BANK --> <b>{binsito[6]}</b>
+{emoji} COUNTRY --> <b>{binsito[4]} {binsito[5]}</b>
 """
     except Exception as e:
         text = f"❌ Error ejecutando BB Gateway:\n{e}"
 
-    # 3. Enviar la respuesta
-    bot.reply_to(message, text)
+    # 5. Enviamos la respuesta con el formato deseado
+    # Usamos send_message con reply_to_message_id para evitar enviar el texto 'Address not verified approved' que aparece en la imagen
+    bot.send_message(chat_id=message.chat.id, text=text, reply_to_message_id=message.id)
 
 
 @bot.message_handler(commands=['sagepay'])
@@ -298,7 +325,8 @@ if __name__ == "__main__":
     APP_URL = os.getenv("APP_URL")
 
     if not APP_URL:
-        raise ValueError("APP_URL no está definida en Railway Variables")
+        # Ya que confirmaste que está arreglado, esta excepción es sólo una precaución
+        raise ValueError("APP_URL no está definida en Railway Variables") 
 
     bot.remove_webhook()
     bot.set_webhook(url=f"{APP_URL}/{TOKEN}")
