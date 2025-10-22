@@ -30,8 +30,8 @@ MASS_COOLDOWN = {}
 MASS_COOLDOWN_TIME = 120 # 2 minutos de espera para el comando masivo
 
 # Fotos en Imgur (cambia por tus enlaces)
-IMG_PHOTO1 = "https://imgur.com/a/NEhEUIm"
-IMG_PHOTO2 = "https://imgur.com/a/NEhEUIm"
+IMG_PHOTO1 = "https://i.imgur.com/ofvFRsO.jpg"
+IMG_PHOTO2 = "https://i.imgur.com/ofvFRsO.jpg"
 
 # Flask app para webhook
 app = Flask(__name__)
