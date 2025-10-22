@@ -16,7 +16,7 @@ TOKEN = os.getenv("BOT_TOKEN")
 bot = TeleBot(TOKEN, parse_mode='HTML')
 
 USERS = [
-    '6116275760']
+    '6116275760', '6622385429']
 
 # Diccionario para almacenar el último uso del comando /bb por usuario
 BB_COOLDOWN = {} 
