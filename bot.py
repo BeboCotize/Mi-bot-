@@ -5,7 +5,6 @@ import time
 from flask import Flask, request
 from telebot import TeleBot, types
 from cc_gen import cc_gen
-# from sagepay import ccn_gate as sagepay  # ELIMINADO
 from gateway import ccn_gate as bb_gateway_check 
  
 # ==============================
@@ -39,7 +38,7 @@ app = Flask(__name__)
 
 # 📌 Prefijos personalizados que el bot aceptará
 CUSTOM_PREFIXES = ['.', '&']
-# Lista de todos tus comandos (sin prefijo) - Eliminado 'sagepay'
+# Lista de todos tus comandos (sin prefijo)
 ALL_COMMANDS = ['bin', 'rnd', 'gen', 'bb', 'mass', 'cmds', 'start', 'deluxe'] 
 
 
@@ -320,7 +319,6 @@ def mass_bb(message):
     
     # 1. Extraer el texto de la CCs
     raw_text = message.reply_to_message.text if message.reply_to_message else message.text
-    # Limpiamos el /mass o .mass si no es un reply
     clean = raw_text.replace("/mass", "").strip() if not message.reply_to_message else raw_text.strip()
     
     # Dividir el texto para encontrar las tarjetas (separadas por línea, espacio o barra)
@@ -328,8 +326,6 @@ def mass_bb(message):
 
     # 2. Parsear y validar las tarjetas
     cards_to_check = []
-    
-    # Las tarjetas deben tener el formato CC|MM|AAAA|CVV o similar
     cc_pattern = re.compile(r'(\d{12,16})[|](\d{1,2})[|](\d{2,4})[|](\d{3,4})')
     
     for line in cc_lines:
@@ -346,21 +342,34 @@ def mass_bb(message):
             parse_mode="Markdown"
         )
     
+    total_cards = len(cards_to_check)
+    
     # 3. ENVIAR MENSAJE INICIAL
     initial_message = bot.reply_to(
         message, 
-        f"⚙️ Iniciando chequeo masivo de {len(cards_to_check)} tarjetas con BB Gateway...\n"
-        "Esto podría tomar unos momentos."
+        f"⚙️ Iniciando chequeo masivo de {total_cards} tarjetas con BB Gateway..."
     ) 
     chat_id = initial_message.chat.id
     message_id = initial_message.message_id
     
     results = []
-    maintenance_triggered = False # Flag para saber si se activa el mantenimiento
+    maintenance_triggered = False
     
-    # 4. Procesar cada tarjeta
-    for full_cc in cards_to_check:
+    # 4. Procesar cada tarjeta con LIVE EDITING
+    for i, full_cc in enumerate(cards_to_check, 1):
         cc, mes, ano, cvv = full_cc.split('|')
+        
+        # 4.1. Actualizar mensaje de progreso
+        try:
+            bot.edit_message_text(
+                chat_id=chat_id,
+                message_id=message_id,
+                text=f"⚙️ Chequeando Tarjeta {i}/{total_cards}: <code>{full_cc}</code>\n\n**Resultados Chequeados:**\n{chr(10).join(results)}",
+                parse_mode='HTML'
+            )
+        except:
+            pass # Ignorar errores de edición si ocurren
+
         
         try:
             status_message = bb_gateway_check(full_cc)
@@ -375,7 +384,7 @@ def mass_bb(message):
                 status = "⚠️ ERROR"
                 if "Max Retries" in status_message:
                     message_detail = "Fallo de conexión. Bloqueo activado."
-                    maintenance_triggered = True # 🚨 ACTIVAR FLAG
+                    maintenance_triggered = True 
                 else:
                     message_detail = status_message
             
@@ -388,12 +397,35 @@ def mass_bb(message):
             )
             results.append(result_line)
             
-            # Si se activa el mantenimiento, salimos del bucle y lo aplicamos
+            # 4.2. Editar el mensaje con el resultado acumulado de la CC recién chequeada
+            current_result_text = "\n".join(results)
+            
+            progress_text = f"""
+🔹 CHEQUEO MASIVO BB GATEWAY 🔹
+━━━━━━━━━━━━━━━
+{current_result_text}
+━━━━━━━━━━━━━━━
+🌐 **Progreso:** {i}/{total_cards}
+"""
+            try:
+                bot.edit_message_text(
+                    chat_id=chat_id, 
+                    message_id=message_id, 
+                    text=progress_text, 
+                    parse_mode='HTML'
+                )
+            except Exception as edit_error:
+                # Si falla la edición, imprimir el error y continuar
+                print(f"Error al editar mensaje de progreso: {edit_error}")
+
+
+            # Si se activa el mantenimiento, salimos del bucle
             if maintenance_triggered:
                 break
             
         except Exception as e:
-            results.append(f"💳 <code>{full_cc}</code> | ❌ ERROR (Excepción)")
+            error_line = f"💳 <code>{full_cc}</code> | ❌ ERROR (Excepción: {str(e)})"
+            results.append(error_line)
             print(f"Error en mass_bb para {full_cc}: {e}")
             
     # 5. Aplicar mantenimiento si se detectó el error
@@ -401,19 +433,19 @@ def mass_bb(message):
         BB_MAINTENANCE[userid] = time.time() + MAINTENANCE_TIME
         results.append("\n\n⚠️ MANTENIMIENTO FORZADO ACTIVADO: Comando /bb y /mass bb bloqueados por 10 minutos.")
         
-    # 6. Formatear y enviar resultado final
+    # 6. Formatear y enviar resultado FINAL
     final_text = f"""
 🔹 CHEQUEO MASIVO BB GATEWAY 🔹
 ━━━━━━━━━━━━━━━
 {chr(10).join(results)}
 ━━━━━━━━━━━━━━━
-🌐 **Total Chequeado:** {len(cards_to_check)}
+🌐 **Total Chequeado:** {total_cards}
 """
     
     # === ACTUALIZAR EL COOLDOWN ===
     MASS_COOLDOWN[userid] = time.time()
 
-    # 7. EDITAR el mensaje inicial con la respuesta final
+    # 7. EDITAR el mensaje por última vez con el resultado final
     try:
         bot.edit_message_text(
             chat_id=chat_id, 
@@ -422,8 +454,9 @@ def mass_bb(message):
             parse_mode='HTML'
         )
     except Exception as edit_error:
+        # Si la edición final falla, envía uno nuevo como respaldo.
         bot.send_message(chat_id=chat_id, text=final_text, parse_mode='HTML')
-        print(f"Error al editar mensaje: {edit_error}")
+        print(f"Error al editar mensaje final: {edit_error}")
 
 
 def cmds(message):
