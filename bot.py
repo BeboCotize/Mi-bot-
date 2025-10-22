@@ -15,7 +15,7 @@ TOKEN = os.getenv("BOT_TOKEN")
 bot = TeleBot(TOKEN, parse_mode='HTML')
 
 USERS = [
-    '6116275760']
+    '6116275760','5551626715']
 
 # Fotos en Imgur (cambia por tus enlaces)
 IMG_PHOTO1 = "https://i.imgur.com/XXXXXXX.jpg"
