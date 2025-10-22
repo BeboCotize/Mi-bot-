@@ -26,6 +26,10 @@ COOLDOWN_TIME = 20 # Tiempo de espera en segundos para reintentar
 BB_MAINTENANCE = {}
 MAINTENANCE_TIME = 600 # 10 minutos en segundos (10 * 60)
 
+# 🚨 NUEVO: Cooldown para el comando masivo
+MASS_COOLDOWN = {} 
+MASS_COOLDOWN_TIME = 120 # 2 minutos de espera para el comando masivo
+
 # Fotos en Imgur (cambia por tus enlaces)
 IMG_PHOTO1 = "https://i.imgur.com/XXXXXXX.jpg"
 IMG_PHOTO2 = "https://i.imgur.com/YYYYYYY.jpg"
@@ -36,7 +40,7 @@ app = Flask(__name__)
 # 📌 NUEVO: Prefijos personalizados que el bot aceptará
 CUSTOM_PREFIXES = ['.', '&']
 # Lista de todos tus comandos (sin prefijo)
-ALL_COMMANDS = ['bin', 'rnd', 'gen', 'bb', 'sagepay', 'cmds', 'start', 'deluxe']
+ALL_COMMANDS = ['bin', 'rnd', 'gen', 'bb', 'sagepay', 'cmds', 'start', 'deluxe', 'mass'] # 👈 'mass' agregado
 
 
 # ==============================
@@ -183,7 +187,7 @@ def gate_bb(message):
     
     current_time = time.time()
     
-    # 🚨 NUEVO: LÓGICA DE MANTENIMIENTO FORZADO 🚨
+    # 🚨 LÓGICA DE MANTENIMIENTO FORZADO 🚨
     if userid in BB_MAINTENANCE and current_time < BB_MAINTENANCE[userid]:
         remaining = int(BB_MAINTENANCE[userid] - current_time)
         minutes = remaining // 60
@@ -241,7 +245,7 @@ def gate_bb(message):
             status = "ERROR"
             emoji = "⚠️"
             
-            # 🚨 MODIFICACIÓN CLAVE DE GESTIÓN DE ERROR Y MANTENIMIENTO
+            # 🚨 GESTIÓN DE ERROR Y MANTENIMIENTO
             if "Max Retries" in status_message:
                 message_detail = "Fallo de conexión o límite de intentos. Comando bloqueado por 10 min."
                 
@@ -273,6 +277,121 @@ def gate_bb(message):
         
     # === ACTUALIZAR EL COOLDOWN (SOLO SI EL CHECK SE EJECUTÓ) ===
     BB_COOLDOWN[userid] = time.time()
+
+    # 6. EDITAR el mensaje inicial con la respuesta final
+    try:
+        bot.edit_message_text(
+            chat_id=chat_id, 
+            message_id=message_id, 
+            text=final_text, 
+            parse_mode='HTML'
+        )
+    except Exception as edit_error:
+        bot.send_message(chat_id=chat_id, text=final_text, parse_mode='HTML')
+        print(f"Error al editar mensaje: {edit_error}")
+
+def mass_bb(message):
+    userid = str(message.from_user.id)
+    if not ver_user(userid):
+        return bot.reply_to(message, 'No estás autorizado.')
+
+    current_time = time.time()
+    
+    # === LÓGICA DE COOLDOWN PARA MASS ===
+    if userid in MASS_COOLDOWN:
+        time_elapsed = current_time - MASS_COOLDOWN[userid]
+        if time_elapsed < MASS_COOLDOWN_TIME:
+            remaining = int(MASS_COOLDOWN_TIME - time_elapsed)
+            return bot.reply_to(
+                message, 
+                f"🚫 ¡Calma! Debes esperar {remaining} segundos antes de volver a usar .mass bb."
+            )
+    
+    # 1. Extraer el texto de la CCs
+    raw_text = message.reply_to_message.text if message.reply_to_message else message.text
+    # Limpiamos el /mass o .mass si no es un reply
+    clean = raw_text.replace("/mass", "").strip() if not message.reply_to_message else raw_text.strip()
+    
+    # Dividir el texto para encontrar las tarjetas (separadas por línea, espacio o barra)
+    cc_lines = re.split(r'[\n\s]+', clean)
+
+    # 2. Parsear y validar las tarjetas
+    cards_to_check = []
+    
+    # Las tarjetas deben tener el formato CC|MM|AAAA|CVV o similar
+    cc_pattern = re.compile(r'(\d{12,16})[|](\d{1,2})[|](\d{2,4})[|](\d{3,4})')
+    
+    for line in cc_lines:
+        match = cc_pattern.search(line)
+        if match and len(cards_to_check) < 10: # Limitamos a 10 tarjetas
+            cc, mes, ano, cvv = match.groups()
+            cards_to_check.append(f"{cc}|{mes}|{ano}|{cvv}")
+    
+    if not cards_to_check:
+        return bot.reply_to(
+            message,
+            "⚠️ Formato inválido o tarjetas no detectadas. Asegúrate de usar el formato:\n"
+            "`/mass 4111...|12|2026|123` (hasta 10 líneas)",
+            parse_mode="Markdown"
+        )
+    
+    # 3. ENVIAR MENSAJE INICIAL
+    initial_message = bot.reply_to(
+        message, 
+        f"⚙️ Iniciando chequeo masivo de {len(cards_to_check)} tarjetas con BB Gateway...\n"
+        "Esto podría tomar unos momentos."
+    ) 
+    chat_id = initial_message.chat.id
+    message_id = initial_message.message_id
+    
+    results = []
+    
+    # 4. Procesar cada tarjeta
+    for full_cc in cards_to_check:
+        cc, mes, ano, cvv = full_cc.split('|')
+        
+        try:
+            status_message = bb_gateway_check(full_cc)
+            
+            if "APROBADO" in status_message or "APPROVED" in status_message:
+                status = "✅ APROBADA"
+                message_detail = status_message.split(":")[-1].strip()
+            elif "DECLINADO" in status_message or "DECLINED" in status_message:
+                status = "❌ DECLINADA"
+                message_detail = status_message.split(":")[-1].strip()
+            else:
+                status = "⚠️ ERROR"
+                if "Max Retries" in status_message:
+                    # Aquí no activamos el mantenimiento forzado para no bloquear a todos los usuarios
+                    # si solo una tarjeta falla por conexión en el mass check.
+                    message_detail = "Fallo de conexión."
+                else:
+                    message_detail = status_message
+            
+            bin_number = cc[0:6]
+            binsito = binlist(bin_number)
+            
+            result_line = (
+                f"💳 <code>{full_cc}</code> | <b>{status}</b>\n"
+                f"└─ **{message_detail}** ({binsito[6]} - {binsito[4]} {binsito[5]})"
+            )
+            results.append(result_line)
+            
+        except Exception as e:
+            results.append(f"💳 <code>{full_cc}</code> | ❌ ERROR (Excepción)")
+            print(f"Error en mass_bb para {full_cc}: {e}")
+            
+    # 5. Formatear y enviar resultado final
+    final_text = f"""
+🔹 CHEQUEO MASIVO BB GATEWAY 🔹
+━━━━━━━━━━━━━━━
+{chr(10).join(results)}
+━━━━━━━━━━━━━━━
+🌐 **Total Chequeado:** {len(cards_to_check)}
+"""
+    
+    # === ACTUALIZAR EL COOLDOWN ===
+    MASS_COOLDOWN[userid] = time.time()
 
     # 6. EDITAR el mensaje inicial con la respuesta final
     try:
@@ -375,6 +494,7 @@ COMMAND_MAP = {
     'cmds': cmds,
     'start': start,
     'deluxe': deluxe,
+    'mass': mass_bb, # 👈 Nuevo comando masivo
 }
 
 def is_command_with_prefix(message):
