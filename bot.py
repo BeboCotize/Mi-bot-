@@ -183,14 +183,16 @@ def gate_bb(message):
 
     cc, mes, ano, cvv = parts[0:4]
     
-    # Notificamos que vamos a chequear
-    bot.reply_to(message, "⚙️ Chequeando con BB Gateway...") 
+    # 2. ENVIAR EL MENSAJE INICIAL Y CAPTURAR SU ID
+    initial_message = bot.reply_to(message, "⚙️ Chequeando con BB Gateway...") 
+    chat_id = initial_message.chat.id
+    message_id = initial_message.message_id # Este es el ID que vamos a editar
 
     try:
         # LLAMADA A TU GATEWAY MODIFICADO (devuelve string con status)
         status_message = bb_gateway_check(f"{cc}|{mes}|{ano}|{cvv}")
         
-        # 2. Parseamos el resultado para darle formato de la captura
+        # 3. Parseamos el resultado para el formato final
         
         if "APROBADO" in status_message or "APPROVED" in status_message:
             status = "APPROVED"
@@ -206,12 +208,12 @@ def gate_bb(message):
             emoji = "⚠️"
             message_detail = status_message
             
-        # 3. Obtenemos información adicional para el formato
+        # 4. Obtenemos información adicional para el formato
         bin_number = cc[0:6]
         binsito = binlist(bin_number)
         
-        # 4. Creamos el mensaje final con el formato deseado
-        text = f"""
+        # 5. Creamos el mensaje final con el formato deseado
+        final_text = f"""
 {emoji} CARD --> <code>{cc}|{mes}|{ano}|{cvv}</code>
 {emoji} STATUS --> <b>{status}</b> {emoji}
 {emoji} MESSAGE --> <b>{message_detail}</b>
@@ -223,11 +225,21 @@ def gate_bb(message):
 {emoji} COUNTRY --> <b>{binsito[4]} {binsito[5]}</b>
 """
     except Exception as e:
-        text = f"❌ Error ejecutando BB Gateway:\n{e}"
+        final_text = f"❌ Error ejecutando BB Gateway:\n{e}"
+        print(f"Error en gate_bb: {e}")
 
-    # 5. Enviamos la respuesta con el formato deseado
-    # Usamos send_message con reply_to_message_id para evitar enviar el texto 'Address not verified approved' que aparece en la imagen
-    bot.send_message(chat_id=message.chat.id, text=text, reply_to_message_id=message.id)
+    # 6. EDITAR el mensaje inicial con la respuesta final
+    try:
+        bot.edit_message_text(
+            chat_id=chat_id, 
+            message_id=message_id, 
+            text=final_text, 
+            parse_mode='HTML'
+        )
+    except Exception as edit_error:
+        # En caso de que la edición falle (raro), enviamos un mensaje nuevo como fallback
+        bot.send_message(chat_id=chat_id, text=final_text, parse_mode='HTML')
+        print(f"Error al editar mensaje: {edit_error}")
 
 
 @bot.message_handler(commands=['sagepay'])
@@ -325,7 +337,7 @@ if __name__ == "__main__":
     APP_URL = os.getenv("APP_URL")
 
     if not APP_URL:
-        # Ya que confirmaste que está arreglado, esta excepción es sólo una precaución
+        # El error de APP_URL debería estar resuelto en Railway, pero esta línea se mantiene por seguridad.
         raise ValueError("APP_URL no está definida en Railway Variables") 
 
     bot.remove_webhook()
