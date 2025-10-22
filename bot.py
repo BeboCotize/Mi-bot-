@@ -1,7 +1,7 @@
 import os
 import re
 import requests
-import time # 👈 Nuevo import necesario para medir el tiempo
+import time
 from flask import Flask, request
 from telebot import TeleBot, types
 from cc_gen import cc_gen
@@ -16,16 +16,15 @@ TOKEN = os.getenv("BOT_TOKEN")
 bot = TeleBot(TOKEN, parse_mode='HTML')
 
 USERS = [
-    '6116275760', '6229802689', '1337313600', '8470094114']
-
-# 📌 NUEVO: Prefijos personalizados que el bot aceptará
-CUSTOM_PREFIXES = ['.', '&']
-# Lista de todos tus comandos (sin prefijo)
-ALL_COMMANDS = ['bin', 'rnd', 'gen', 'bb', 'sagepay', 'cmds', 'start', 'deluxe']
+    '6116275760']
 
 # Diccionario para almacenar el último uso del comando /bb por usuario
 BB_COOLDOWN = {} 
-COOLDOWN_TIME = 20 # 👈 Tiempo de espera en segundos
+COOLDOWN_TIME = 20 # Tiempo de espera en segundos para reintentar
+
+# 🚨 NUEVO: Diccionario y tiempo para el Modo Mantenimiento Forzado
+BB_MAINTENANCE = {}
+MAINTENANCE_TIME = 600 # 10 minutos en segundos (10 * 60)
 
 # Fotos en Imgur (cambia por tus enlaces)
 IMG_PHOTO1 = "https://i.imgur.com/XXXXXXX.jpg"
@@ -33,6 +32,11 @@ IMG_PHOTO2 = "https://i.imgur.com/YYYYYYY.jpg"
 
 # Flask app para webhook
 app = Flask(__name__)
+
+# 📌 NUEVO: Prefijos personalizados que el bot aceptará
+CUSTOM_PREFIXES = ['.', '&']
+# Lista de todos tus comandos (sin prefijo)
+ALL_COMMANDS = ['bin', 'rnd', 'gen', 'bb', 'sagepay', 'cmds', 'start', 'deluxe']
 
 
 # ==============================
@@ -85,7 +89,6 @@ def dir_fake():
 # ==============================
 
 def bin_cmd(message):
-    # El mensaje.text ya viene limpio como /bin ... gracias al router
     userid = str(message.from_user.id)
     if not ver_user(userid):
         return bot.reply_to(message, 'No estás autorizado.')
@@ -93,7 +96,6 @@ def bin_cmd(message):
     if message.reply_to_message:
         search_bin = re.findall(r'[0-9]+', str(message.reply_to_message.text))
     else:
-        # Buscamos después del /bin (que es la primera palabra)
         text_after_command = " ".join(message.text.split()[1:])
         search_bin = re.findall(r'[0-9]+', text_after_command)
 
@@ -115,7 +117,6 @@ def bin_cmd(message):
 
 
 def rand(message):
-    # El mensaje.text ya viene limpio como /rnd ... gracias al router
     userid = str(message.from_user.id)
     if not ver_user(userid):
         return bot.reply_to(message, 'No estás autorizado.')
@@ -135,12 +136,10 @@ def rand(message):
 
 
 def gen(message):
-    # El mensaje.text ya viene limpio como /gen ... gracias al router
     userid = str(message.from_user.id)
     if not ver_user(userid):
         return bot.reply_to(message, 'No estás autorizado.')
 
-    # Buscamos después del /gen (que es la primera palabra)
     text_after_command = " ".join(message.text.split()[1:])
     inputcc = re.findall(r'[0-9x]+', text_after_command)
     
@@ -178,13 +177,23 @@ def gen(message):
 
 
 def gate_bb(message):
-    # El mensaje.text ya viene limpio como /bb ... gracias al router
     userid = str(message.from_user.id)
     if not ver_user(userid):
         return bot.reply_to(message, 'No estás autorizado.')
     
-    # === LÓGICA DE COOLDOWN (SPAM-LOCK) ===
     current_time = time.time()
+    
+    # 🚨 NUEVO: LÓGICA DE MANTENIMIENTO FORZADO 🚨
+    if userid in BB_MAINTENANCE and current_time < BB_MAINTENANCE[userid]:
+        remaining = int(BB_MAINTENANCE[userid] - current_time)
+        minutes = remaining // 60
+        seconds = remaining % 60
+        return bot.reply_to(
+            message, 
+            f"🛠️ Comando /bb en mantenimiento forzado (Max Retries). Por favor, espera {minutes} minutos y {seconds} segundos."
+        )
+
+    # === LÓGICA DE COOLDOWN (SPAM-LOCK) ===
     if userid in BB_COOLDOWN:
         time_elapsed = current_time - BB_COOLDOWN[userid]
         if time_elapsed < COOLDOWN_TIME:
@@ -196,13 +205,11 @@ def gate_bb(message):
     
     # 1. Preparar el texto de entrada
     raw_text = message.reply_to_message.text if message.reply_to_message else message.text
-    # Limpiamos el /bb o .bb si no es un reply
     clean = raw_text.replace("/bb", "").strip() if not message.reply_to_message else raw_text.strip()
     
     parts = re.split(r"[| \n\t]+", clean)
 
     if len(parts) < 4:
-        # 📌 Si el formato es inválido, NO actualizamos el cooldown.
         return bot.reply_to(
             message,
             "⚠️ Formato inválido.\nEjemplo:\n"
@@ -215,7 +222,7 @@ def gate_bb(message):
     # 2. ENVIAR EL MENSAJE INICIAL Y CAPTURAR SU ID
     initial_message = bot.reply_to(message, "⚙️ Chequeando con BB Gateway...") 
     chat_id = initial_message.chat.id
-    message_id = initial_message.message_id # Este es el ID que vamos a editar
+    message_id = initial_message.message_id
 
     try:
         # LLAMADA A TU GATEWAY MODIFICADO (devuelve string con status)
@@ -233,7 +240,16 @@ def gate_bb(message):
         else:
             status = "ERROR"
             emoji = "⚠️"
-            message_detail = status_message
+            
+            # 🚨 MODIFICACIÓN CLAVE DE GESTIÓN DE ERROR Y MANTENIMIENTO
+            if "Max Retries" in status_message:
+                message_detail = "Fallo de conexión o límite de intentos. Comando bloqueado por 10 min."
+                
+                # ACTIVAR MANTENIMIENTO FORZADO POR 10 MINUTOS
+                BB_MAINTENANCE[userid] = time.time() + MAINTENANCE_TIME
+                
+            else:
+                message_detail = status_message
             
         # 4. Obtenemos información adicional para el formato
         bin_number = cc[0:6]
@@ -272,12 +288,10 @@ def gate_bb(message):
 
 
 def gate_sagepay(message):
-    # El mensaje.text ya viene limpio como /sagepay ... gracias al router
     if not ver_user(str(message.from_user.id)):
         return bot.reply_to(message, 'No estás autorizado.')
 
     raw_text = message.reply_to_message.text if message.reply_to_message else message.text
-    # Limpiamos el /sagepay o .sagepay si no es un reply
     clean = raw_text.replace("/sagepay", "").strip() if not message.reply_to_message else raw_text.strip()
     
     parts = re.split(r"[| \n\t]+", clean)
@@ -294,7 +308,7 @@ def gate_sagepay(message):
     cc, mes, ano, cvv = parts[0:4]
 
     try:
-        result = sagepay(f"{cc}|{mes}|{ano}|{cvv}")   # ahora devuelve solo el resultado limpio
+        result = sagepay(f"{cc}|{mes}|{ano}|{cvv}")
         print("DEBUG sagepay() ->", result)
 
         text = f"""
@@ -308,7 +322,6 @@ def gate_sagepay(message):
 
 
 def cmds(message):
-    # El mensaje.text ya viene limpio como /cmds ... gracias al router
     buttons_cmds = [
         [
             types.InlineKeyboardButton('Gateways', callback_data='gates'),
@@ -329,7 +342,6 @@ def cmds(message):
 
 
 def start(message):
-    # El mensaje.text ya viene limpio como /start ... gracias al router
     text = f"""
 <b>⚠️ Bienvenido a DuluxeChk ⚠️</b>
 • Para ver tools/Gateways: /cmds
@@ -340,7 +352,6 @@ def start(message):
 
 
 def deluxe(message):
-    # El mensaje.text ya viene limpio como /deluxe ... gracias al router
     text = f"""
 ⚠️ Términos ⚠️
 - Macros/scripts = ban
@@ -355,7 +366,6 @@ def deluxe(message):
 # ROUTER DE COMANDOS CON PREFIJOS
 # ==============================
 
-# Mapeo de nombres de comandos a sus funciones
 COMMAND_MAP = {
     'bin': bin_cmd,
     'rnd': rand,
@@ -364,7 +374,7 @@ COMMAND_MAP = {
     'sagepay': gate_sagepay,
     'cmds': cmds,
     'start': start,
-    'deluxe': deluxe, # Los comandos en telegram-bot son case-insensitive por defecto
+    'deluxe': deluxe,
 }
 
 def is_command_with_prefix(message):
@@ -376,15 +386,12 @@ def is_command_with_prefix(message):
     if not parts:
         return False
 
-    first_word = parts[0].lower() # Convertir a minúsculas para case-insensitivity
+    first_word = parts[0].lower()
     
-    # Chequear todos los prefijos
     prefixes = ['/'] + CUSTOM_PREFIXES
     for prefix in prefixes:
         if first_word.startswith(prefix):
-            # Obtener el nombre del comando sin el prefijo
             command = first_word[len(prefix):]
-            # Quitar el nombre del bot si está presente (ej: /start@mybot)
             if '@' in command:
                 command = command.split('@')[0]
                 
@@ -392,39 +399,27 @@ def is_command_with_prefix(message):
             
     return False
 
-# El manejador principal que recibe todos los comandos válidos
 @bot.message_handler(func=is_command_with_prefix)
 def handle_all_commands(message):
     text_parts = message.text.split()
     command_with_prefix = text_parts[0].lower()
     
-    # 1. Determinar el comando real (ej. 'bin', 'bb', etc.)
     command_name = ""
     prefixes = ['/'] + CUSTOM_PREFIXES
     for prefix in prefixes:
         if command_with_prefix.startswith(prefix):
             command_name = command_with_prefix[len(prefix):]
-            # Quitar el nombre del bot si está presente (ej: /start@mybot)
             if '@' in command_name:
                 command_name = command_name.split('@')[0]
             break
 
-    # 2. Re-formatear el mensaje para que las funciones lo manejen
     if command_name in COMMAND_MAP:
-        
-        # Creamos una copia para simular el comando tradicional de Telegram (/comando ...)
-        # Las funciones de handler están esperando que message.text inicie con "/comando"
-        
-        # El primer elemento del mensaje será el nuevo "/comando"
         new_text_parts = [f"/{command_name}"]
-        # El resto del mensaje (los argumentos) se añaden después
         if len(text_parts) > 1:
             new_text_parts.extend(text_parts[1:])
         
-        # Sobrescribimos el texto del mensaje con el formato /comando ...
         message.text = " ".join(new_text_parts)
         
-        # 3. Llama a la función de comando correspondiente
         COMMAND_MAP[command_name](message)
 
 
