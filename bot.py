@@ -5,6 +5,7 @@ import time
 from flask import Flask, request
 from telebot import TeleBot, types
 from cc_gen import cc_gen
+# Asegúrate de que tu archivo 'gateway.py' esté subido junto con este código
 from gateway import ccn_gate as bb_gateway_check 
  
 # ==============================
@@ -14,6 +15,7 @@ from gateway import ccn_gate as bb_gateway_check
 TOKEN = os.getenv("BOT_TOKEN")
 bot = TeleBot(TOKEN, parse_mode='HTML')
 
+# 📌 ID de usuarios autorizados
 USERS = [
     '6116275760']
 
@@ -29,9 +31,10 @@ MAINTENANCE_TIME = 600 # 10 minutos en segundos (10 * 60)
 MASS_COOLDOWN = {} 
 MASS_COOLDOWN_TIME = 120 # 2 minutos de espera para el comando masivo
 
-# Fotos en Imgur (cambia por tus enlaces)
-IMG_PHOTO1 = "https://i.imgur.com/ofvFRsO.jpg"
-IMG_PHOTO2 = "https://i.imgur.com/ofvFRsO.jpg"
+# Fotos en Telegram (Usar FILE_ID para máxima estabilidad)
+# 🚨🚨 REEMPLAZA IMG_PHOTO1 CON TU OTRO FILE_ID 🚨🚨
+IMG_PHOTO1 = "AgAD0QADlKxIL0z7_cT67p7pAASwzY020A4ABu8k9hFjI_TU_file_id_1_placeholder" 
+IMG_PHOTO2 = "AgACAgEAAxkBAAE81YRo-UuWDmD16N0u1UZNGYRb3bp9kQACjgtrGy6KyUfGuhk5n4wzYQEAAwIAA3gAAzYE" 
 
 # Flask app para webhook
 app = Flask(__name__)
@@ -51,6 +54,7 @@ def ver_user(iduser: str) -> bool:
 
 def binlist(bin: str) -> tuple | bool:
     try:
+        # Nota: binlist.io es más rápido y estable que binlist.net o similar
         result = requests.get(f'https://binlist.io/lookup/{bin}/').json()
         return (
             result['number']['iin'],
@@ -359,29 +363,35 @@ def mass_bb(message):
     for i, full_cc in enumerate(cards_to_check, 1):
         cc, mes, ano, cvv = full_cc.split('|')
         
-        # 4.1. Actualizar mensaje de progreso
+        # 4.1. Actualizar mensaje de progreso (mostrando lo que se está chequeando)
+        progress_msg_base = f"⚙️ Chequeando Tarjeta {i}/{total_cards}: <code>{full_cc}</code>"
+        
+        # 4.2. Intentar editar el mensaje antes del check para mostrar la CC actual
         try:
             bot.edit_message_text(
                 chat_id=chat_id,
                 message_id=message_id,
-                text=f"⚙️ Chequeando Tarjeta {i}/{total_cards}: <code>{full_cc}</code>\n\n**Resultados Chequeados:**\n{chr(10).join(results)}",
+                text=f"{progress_msg_base}\n\n**Resultados Chequeados:**\n{chr(10).join(results)}",
                 parse_mode='HTML'
             )
         except:
             pass # Ignorar errores de edición si ocurren
-
+        
         
         try:
             status_message = bb_gateway_check(full_cc)
             
             if "APROBADO" in status_message or "APPROVED" in status_message:
-                status = "✅ APROBADA"
+                status_emoji = "✅"
+                status_bold = "APROBADA"
                 message_detail = status_message.split(":")[-1].strip()
             elif "DECLINADO" in status_message or "DECLINED" in status_message:
-                status = "❌ DECLINADA"
+                status_emoji = "❌"
+                status_bold = "DECLINADA"
                 message_detail = status_message.split(":")[-1].strip()
             else:
-                status = "⚠️ ERROR"
+                status_emoji = "⚠️"
+                status_bold = "ERROR"
                 if "Max Retries" in status_message:
                     message_detail = "Fallo de conexión. Bloqueo activado."
                     maintenance_triggered = True 
@@ -391,21 +401,26 @@ def mass_bb(message):
             bin_number = cc[0:6]
             binsito = binlist(bin_number)
             
-            result_line = (
-                f"💳 <code>{full_cc}</code> | <b>{status}</b>\n"
-                f"└─ **{message_detail}** ({binsito[6]} - {binsito[4]} {binsito[5]})"
-            )
+            # --- Formato PRO mejorado para cada resultado ---
+            result_line = f"""
+{status_emoji} <b>STATUS: {status_bold}</b>
+💳 CARD: <code>{full_cc}</code>
+📄 MESSAGE: <b>{message_detail}</b>
+🏦 BANK: {binsito[6]}
+🌎 COUNTRY: {binsito[4]} {binsito[5]}
+━━━━━━━━━━━━━━━""" # Separador para que no se vea pegado
+
             results.append(result_line)
             
-            # 4.2. Editar el mensaje con el resultado acumulado de la CC recién chequeada
+            # 4.3. Editar el mensaje con el resultado acumulado de la CC recién chequeada
             current_result_text = "\n".join(results)
             
             progress_text = f"""
 🔹 CHEQUEO MASIVO BB GATEWAY 🔹
 ━━━━━━━━━━━━━━━
-{current_result_text}
+🌐 <b>PROGRESO: {i}/{total_cards}</b>
 ━━━━━━━━━━━━━━━
-🌐 **Progreso:** {i}/{total_cards}
+{current_result_text}
 """
             try:
                 bot.edit_message_text(
@@ -472,7 +487,7 @@ def cmds(message):
 
     bot.send_photo(
         chat_id=message.chat.id,
-        photo=IMG_PHOTO1,
+        photo=IMG_PHOTO1, # Usa FILE_ID
         caption=text,
         reply_to_message_id=message.id,
         reply_markup=markup_buttom
@@ -486,7 +501,7 @@ def start(message):
 • Info: /Deluxe
 🚸 @DuluxeChk
 """
-    bot.send_photo(chat_id=message.chat.id, photo=IMG_PHOTO2, caption=text)
+    bot.send_photo(chat_id=message.chat.id, photo=IMG_PHOTO2, caption=text) # Usa FILE_ID
 
 
 def deluxe(message):
@@ -497,7 +512,7 @@ def deluxe(message):
 - Difamación = ban
 - Robo de gates = ban
 """
-    bot.send_photo(chat_id=message.chat.id, photo=IMG_PHOTO1, caption=text)
+    bot.send_photo(chat_id=message.chat.id, photo=IMG_PHOTO1, caption=text) # Usa FILE_ID
 
 
 # ==============================
