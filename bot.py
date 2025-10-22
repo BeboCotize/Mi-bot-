@@ -4,7 +4,8 @@ import requests
 from flask import Flask, request
 from telebot import TeleBot, types
 from cc_gen import cc_gen
-from sagepay import ccn_gate as sagepay   # 👈 importamos tu función y la usamos como "sagepay"
+from sagepay import ccn_gate as sagepay   # Importación de SagePay
+from gateway import ccn_gate as bb_gateway_check # 👈 NUEVA IMPORTACIÓN (Asumiendo bb_gateway.py)
  
 # ==============================
 # CONFIGURACIÓN 
@@ -159,6 +160,47 @@ def gen(message):
 𝗘𝗫𝗧𝗥𝗔: <code>{cc}|{mes}|{ano}|{cvv}</code>
 """
     bot.send_message(chat_id=message.chat.id, text=text, reply_to_message_id=message.id)
+
+
+@bot.message_handler(commands=['bb'])
+def gate_bb(message):
+    # Lógica de autorización
+    if not ver_user(str(message.from_user.id)):
+        return bot.reply_to(message, 'No estás autorizado.')
+
+    # 1. Preparar el texto de entrada (asume el formato CC|MM|AAAA|CVV)
+    raw_text = message.reply_to_message.text if message.reply_to_message else message.text
+    clean = raw_text.replace("/bb", "").strip() # Quitamos el comando /bb del texto
+    parts = re.split(r"[| \n\t]+", clean)
+
+    if len(parts) < 4:
+        return bot.reply_to(
+            message,
+            "⚠️ Formato inválido.\nEjemplo:\n"
+            "`/bb 4111111111111111|12|2026|123`",
+            parse_mode="Markdown"
+        )
+
+    cc, mes, ano, cvv = parts[0:4]
+
+    # 2. Llamar a la NUEVA función del gateway
+    bot.reply_to(message, "⚙️ Chequeando con BB Gateway...") # Opción: avisar al usuario que se está procesando
+
+    try:
+        # LLAMADA A TU NUEVO GATEWAY BB
+        result = bb_gateway_check(f"{cc}|{mes}|{ano}|{cvv}")
+        print("DEBUG bb_gateway_check() ->", result)
+
+        # Usamos el resultado devuelto por tu función
+        text = f"""
+💳 <code>{cc}|{mes}|{ano}|{cvv}</code>
+📌 RESULT (BB GATEWAY): <b>¡Revisa tus logs o el archivo live.txt!</b>
+"""
+    except Exception as e:
+        text = f"❌ Error ejecutando BB Gateway:\n{e}"
+
+    # 3. Enviar la respuesta
+    bot.reply_to(message, text)
 
 
 @bot.message_handler(commands=['sagepay'])
