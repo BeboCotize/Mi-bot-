@@ -5,7 +5,7 @@ from random import choice
 from colorama import init, Fore
 from fake_useragent import UserAgent
 from urllib.parse import quote, unquote
-
+ 
 
 def usuario() -> dict:
     number = random.randint(1111, 9999)
