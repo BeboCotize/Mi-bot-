@@ -1,11 +1,12 @@
 import os
 import re
 import requests
+import time # 👈 Nuevo import necesario para medir el tiempo
 from flask import Flask, request
 from telebot import TeleBot, types
 from cc_gen import cc_gen
-from sagepay import ccn_gate as sagepay   # Importación del gateway SagePay (original)
-from gateway import ccn_gate as bb_gateway_check # 👈 TU NUEVA IMPORTACIÓN (desde gateway.py)
+from sagepay import ccn_gate as sagepay
+from gateway import ccn_gate as bb_gateway_check 
  
 # ==============================
 # CONFIGURACIÓN 
@@ -15,7 +16,11 @@ TOKEN = os.getenv("BOT_TOKEN")
 bot = TeleBot(TOKEN, parse_mode='HTML')
 
 USERS = [
-    '6116275760','5551626715']
+    '6116275760']
+
+# Diccionario para almacenar el último uso del comando /bb por usuario
+BB_COOLDOWN = {} 
+COOLDOWN_TIME = 20 # 👈 Tiempo de espera en segundos
 
 # Fotos en Imgur (cambia por tus enlaces)
 IMG_PHOTO1 = "https://i.imgur.com/XXXXXXX.jpg"
@@ -167,13 +172,25 @@ def gate_bb(message):
     userid = str(message.from_user.id)
     if not ver_user(userid):
         return bot.reply_to(message, 'No estás autorizado.')
-
+    
+    # === LÓGICA DE COOLDOWN (SPAM-LOCK) ===
+    current_time = time.time()
+    if userid in BB_COOLDOWN:
+        time_elapsed = current_time - BB_COOLDOWN[userid]
+        if time_elapsed < COOLDOWN_TIME:
+            remaining = int(COOLDOWN_TIME - time_elapsed)
+            return bot.reply_to(
+                message, 
+                f"🚫 ¡Alto ahí! Debes esperar {remaining} segundos antes de volver a usar /bb."
+            )
+    
     # 1. Preparar el texto de entrada (asume el formato CC|MM|AAAA|CVV)
     raw_text = message.reply_to_message.text if message.reply_to_message else message.text
     clean = raw_text.replace("/bb", "").strip() 
     parts = re.split(r"[| \n\t]+", clean)
 
     if len(parts) < 4:
+        # 📌 Si el formato es inválido, NO actualizamos el cooldown.
         return bot.reply_to(
             message,
             "⚠️ Formato inválido.\nEjemplo:\n"
@@ -193,11 +210,9 @@ def gate_bb(message):
         status_message = bb_gateway_check(f"{cc}|{mes}|{ano}|{cvv}")
         
         # 3. Parseamos el resultado para el formato final
-        
         if "APROBADO" in status_message or "APPROVED" in status_message:
             status = "APPROVED"
             emoji = "✅"
-            # Tomamos el detalle después del ':'
             message_detail = status_message.split(":")[-1].strip()
         elif "DECLINADO" in status_message or "DECLINED" in status_message:
             status = "DECLINED"
@@ -227,6 +242,9 @@ def gate_bb(message):
     except Exception as e:
         final_text = f"❌ Error ejecutando BB Gateway:\n{e}"
         print(f"Error en gate_bb: {e}")
+        
+    # === ACTUALIZAR EL COOLDOWN (SOLO SI EL CHECK SE EJECUTÓ) ===
+    BB_COOLDOWN[userid] = time.time()
 
     # 6. EDITAR el mensaje inicial con la respuesta final
     try:
@@ -237,7 +255,6 @@ def gate_bb(message):
             parse_mode='HTML'
         )
     except Exception as edit_error:
-        # En caso de que la edición falle (raro), enviamos un mensaje nuevo como fallback
         bot.send_message(chat_id=chat_id, text=final_text, parse_mode='HTML')
         print(f"Error al editar mensaje: {edit_error}")
 
@@ -337,7 +354,6 @@ if __name__ == "__main__":
     APP_URL = os.getenv("APP_URL")
 
     if not APP_URL:
-        # El error de APP_URL debería estar resuelto en Railway, pero esta línea se mantiene por seguridad.
         raise ValueError("APP_URL no está definida en Railway Variables") 
 
     bot.remove_webhook()
