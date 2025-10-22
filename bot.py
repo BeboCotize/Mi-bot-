@@ -5,7 +5,7 @@ import time
 from flask import Flask, request
 from telebot import TeleBot, types
 from cc_gen import cc_gen
-from sagepay import ccn_gate as sagepay
+# from sagepay import ccn_gate as sagepay  # ELIMINADO
 from gateway import ccn_gate as bb_gateway_check 
  
 # ==============================
@@ -16,17 +16,17 @@ TOKEN = os.getenv("BOT_TOKEN")
 bot = TeleBot(TOKEN, parse_mode='HTML')
 
 USERS = [
-    '6116275760', '6622385429']
+    '6116275760']
 
 # Diccionario para almacenar el último uso del comando /bb por usuario
 BB_COOLDOWN = {} 
 COOLDOWN_TIME = 20 # Tiempo de espera en segundos para reintentar
 
-# 🚨 NUEVO: Diccionario y tiempo para el Modo Mantenimiento Forzado
+# 🚨 MANTENIMIENTO FORZADO POR FALLO DE GATEWAY (Max Retries)
 BB_MAINTENANCE = {}
 MAINTENANCE_TIME = 600 # 10 minutos en segundos (10 * 60)
 
-# 🚨 NUEVO: Cooldown para el comando masivo
+# 🚨 Cooldown para el comando masivo
 MASS_COOLDOWN = {} 
 MASS_COOLDOWN_TIME = 120 # 2 minutos de espera para el comando masivo
 
@@ -37,10 +37,10 @@ IMG_PHOTO2 = "https://i.imgur.com/YYYYYYY.jpg"
 # Flask app para webhook
 app = Flask(__name__)
 
-# 📌 NUEVO: Prefijos personalizados que el bot aceptará
+# 📌 Prefijos personalizados que el bot aceptará
 CUSTOM_PREFIXES = ['.', '&']
-# Lista de todos tus comandos (sin prefijo)
-ALL_COMMANDS = ['bin', 'rnd', 'gen', 'bb', 'sagepay', 'cmds', 'start', 'deluxe', 'mass'] # 👈 'mass' agregado
+# Lista de todos tus comandos (sin prefijo) - Eliminado 'sagepay'
+ALL_COMMANDS = ['bin', 'rnd', 'gen', 'bb', 'mass', 'cmds', 'start', 'deluxe'] 
 
 
 # ==============================
@@ -89,7 +89,7 @@ def dir_fake():
 
 
 # ==============================
-# HANDLERS (SIN DECORADORES @bot.message_handler(commands=...) AHORA)
+# HANDLERS (COMANDOS)
 # ==============================
 
 def bin_cmd(message):
@@ -290,6 +290,7 @@ def gate_bb(message):
         bot.send_message(chat_id=chat_id, text=final_text, parse_mode='HTML')
         print(f"Error al editar mensaje: {edit_error}")
 
+
 def mass_bb(message):
     userid = str(message.from_user.id)
     if not ver_user(userid):
@@ -297,6 +298,16 @@ def mass_bb(message):
 
     current_time = time.time()
     
+    # 🚨 LÓGICA DE MANTENIMIENTO FORZADO (Compartido con /bb) 🚨
+    if userid in BB_MAINTENANCE and current_time < BB_MAINTENANCE[userid]:
+        remaining = int(BB_MAINTENANCE[userid] - current_time)
+        minutes = remaining // 60
+        seconds = remaining % 60
+        return bot.reply_to(
+            message, 
+            f"🛠️ Comando /mass bb en mantenimiento forzado (Max Retries). Por favor, espera {minutes} minutos y {seconds} segundos."
+        )
+
     # === LÓGICA DE COOLDOWN PARA MASS ===
     if userid in MASS_COOLDOWN:
         time_elapsed = current_time - MASS_COOLDOWN[userid]
@@ -345,6 +356,7 @@ def mass_bb(message):
     message_id = initial_message.message_id
     
     results = []
+    maintenance_triggered = False # Flag para saber si se activa el mantenimiento
     
     # 4. Procesar cada tarjeta
     for full_cc in cards_to_check:
@@ -362,9 +374,8 @@ def mass_bb(message):
             else:
                 status = "⚠️ ERROR"
                 if "Max Retries" in status_message:
-                    # Aquí no activamos el mantenimiento forzado para no bloquear a todos los usuarios
-                    # si solo una tarjeta falla por conexión en el mass check.
-                    message_detail = "Fallo de conexión."
+                    message_detail = "Fallo de conexión. Bloqueo activado."
+                    maintenance_triggered = True # 🚨 ACTIVAR FLAG
                 else:
                     message_detail = status_message
             
@@ -377,11 +388,20 @@ def mass_bb(message):
             )
             results.append(result_line)
             
+            # Si se activa el mantenimiento, salimos del bucle y lo aplicamos
+            if maintenance_triggered:
+                break
+            
         except Exception as e:
             results.append(f"💳 <code>{full_cc}</code> | ❌ ERROR (Excepción)")
             print(f"Error en mass_bb para {full_cc}: {e}")
             
-    # 5. Formatear y enviar resultado final
+    # 5. Aplicar mantenimiento si se detectó el error
+    if maintenance_triggered:
+        BB_MAINTENANCE[userid] = time.time() + MAINTENANCE_TIME
+        results.append("\n\n⚠️ MANTENIMIENTO FORZADO ACTIVADO: Comando /bb y /mass bb bloqueados por 10 minutos.")
+        
+    # 6. Formatear y enviar resultado final
     final_text = f"""
 🔹 CHEQUEO MASIVO BB GATEWAY 🔹
 ━━━━━━━━━━━━━━━
@@ -393,7 +413,7 @@ def mass_bb(message):
     # === ACTUALIZAR EL COOLDOWN ===
     MASS_COOLDOWN[userid] = time.time()
 
-    # 6. EDITAR el mensaje inicial con la respuesta final
+    # 7. EDITAR el mensaje inicial con la respuesta final
     try:
         bot.edit_message_text(
             chat_id=chat_id, 
@@ -404,40 +424,6 @@ def mass_bb(message):
     except Exception as edit_error:
         bot.send_message(chat_id=chat_id, text=final_text, parse_mode='HTML')
         print(f"Error al editar mensaje: {edit_error}")
-
-
-def gate_sagepay(message):
-    if not ver_user(str(message.from_user.id)):
-        return bot.reply_to(message, 'No estás autorizado.')
-
-    raw_text = message.reply_to_message.text if message.reply_to_message else message.text
-    clean = raw_text.replace("/sagepay", "").strip() if not message.reply_to_message else raw_text.strip()
-    
-    parts = re.split(r"[| \n\t]+", clean)
-
-    if len(parts) < 4:
-        return bot.reply_to(
-            message,
-            "⚠️ Formato inválido.\nEjemplos:\n"
-            "`/sagepay 4111111111111111 12 2026 123`\n"
-            "`/sagepay 4111111111111111|12|2026|123`",
-            parse_mode="Markdown"
-        )
-
-    cc, mes, ano, cvv = parts[0:4]
-
-    try:
-        result = sagepay(f"{cc}|{mes}|{ano}|{cvv}")
-        print("DEBUG sagepay() ->", result)
-
-        text = f"""
-💳 <code>{cc}|{mes}|{ano}|{cvv}</code>
-📌 RESULT: <b>{result}</b>
-"""
-    except Exception as e:
-        text = f"❌ Error ejecutando gateway SagePay:\n{e}"
-
-    bot.reply_to(message, text)
 
 
 def cmds(message):
@@ -490,11 +476,10 @@ COMMAND_MAP = {
     'rnd': rand,
     'gen': gen,
     'bb': gate_bb,
-    'sagepay': gate_sagepay,
+    'mass': mass_bb, # Comando masivo
     'cmds': cmds,
     'start': start,
     'deluxe': deluxe,
-    'mass': mass_bb, # 👈 Nuevo comando masivo
 }
 
 def is_command_with_prefix(message):
