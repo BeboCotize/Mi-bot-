@@ -16,7 +16,7 @@ TOKEN = os.getenv("BOT_TOKEN")
 bot = TeleBot(TOKEN, parse_mode='HTML')
 
 USERS = [
-    '6116275760', '6229802689', '1337313600']
+    '6116275760', '6229802689', '1337313600', '8470094114']
 
 # 📌 NUEVO: Prefijos personalizados que el bot aceptará
 CUSTOM_PREFIXES = ['.', '&']
