@@ -4,8 +4,8 @@ import requests
 from flask import Flask, request
 from telebot import TeleBot, types
 from cc_gen import cc_gen
-from sagepay import ccn_gate as sagepay   # Importación de SagePay
-from gateway import ccn_gate as bb_gateway_check # 👈 NUEVA IMPORTACIÓN (Asumiendo bb_gateway.py)
+from sagepay import ccn_gate as sagepay   # Importación del gateway SagePay
+from gateway import ccn_gate as bb_gateway_check # 👈 NUEVA IMPORTACIÓN: Tu nuevo gateway en el archivo 'gateway.py'
  
 # ==============================
 # CONFIGURACIÓN 
@@ -184,7 +184,7 @@ def gate_bb(message):
     cc, mes, ano, cvv = parts[0:4]
 
     # 2. Llamar a la NUEVA función del gateway
-    bot.reply_to(message, "⚙️ Chequeando con BB Gateway...") # Opción: avisar al usuario que se está procesando
+    bot.reply_to(message, "⚙️ Chequeando con BB Gateway...") 
 
     try:
         # LLAMADA A TU NUEVO GATEWAY BB
