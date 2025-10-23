@@ -6,9 +6,7 @@ from flask import Flask, request
 from telebot import TeleBot, types
 from cc_gen import cc_gen
 # Asegúrate de que tus archivos 'gateway.py' y 'sagepay.py' estén subidos
-from sagepay import ccn_gate # <--- CORREGIDO: Importa ccn_gate y la renombra
- 
-#from sagepay import sagepay_check # <--- FUNCIÓN NECESARIA PARA /ty
+from sagepay import ccn_gate as sagepay_check # ✅ CORRECCIÓN APLICADA: Importa ccn_gate y la renombra como sagepay_check
  
 # ==============================
 # CONFIGURACIÓN 
@@ -475,6 +473,7 @@ def ty_cmd(message):
     message_id = initial_message.message_id
 
     try:
+        # Esto ahora funciona porque ccn_gate fue renombrada a sagepay_check
         status_message = sagepay_check(f"{cc}|{mes}|{ano}|{cvv}")
         
         if "APROBADO" in status_message or "APPROVED" in status_message:
