@@ -10,11 +10,11 @@ from cc_gen import cc_gen
 
 from gateway import ccn_gate as bb_gateway_check
 
-==============================
+#==============================
 
-CONFIGURACIÓN
+#CONFIGURACIÓN
 
-==============================
+#==============================
 
 TOKEN = os.getenv("BOT_TOKEN")
 bot = TeleBot(TOKEN, parse_mode='HTML')
