@@ -6,7 +6,7 @@ from flask import Flask, request
 from telebot import TeleBot, types
 from cc_gen import cc_gen
 # Asegúrate de que tus archivos 'gateway.py' y 'sagepay.py' estén subidos
-from sagepay import ccn_gate as sagepay_check # <--- CORREGIDO: Importa ccn_gate y la renombra
+from sagepay import ccn_gate # <--- CORREGIDO: Importa ccn_gate y la renombra
  
 from sagepay import sagepay_check # <--- FUNCIÓN NECESARIA PARA /ty
  
