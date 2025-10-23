@@ -6,7 +6,7 @@ from flask import Flask, request
 from telebot import TeleBot, types
 from cc_gen import cc_gen
 
-Asegúrate de que tu archivo 'gateway.py' esté subido junto con este código
+#Asegúrate de que tu archivo 'gateway.py' esté subido junto con este código
 
 from gateway import ccn_gate as bb_gateway_check
 
