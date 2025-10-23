@@ -600,7 +600,6 @@ def is_command_with_prefix(message):
     first_word = parts[0].lower()
     
     prefixes = ['/'] + CUSTOM_PREFIXES
-    # 🚨 ESTA PARTE FALTABA O ESTABA INCOMPLETA 🚨
     for prefix in prefixes:
         if first_word.startswith(prefix):
             command = first_word[len(prefix):]
