@@ -39,7 +39,7 @@ MAINTENANCE_TIME = 600 # 10 minutos en segundos (10 * 60)
 MASS_COOLDOWN = {}
 MASS_COOLDOWN_TIME = 120 # 2 minutos de espera para el comando masivo
 
-Fotos en Telegram (Usar FILE_ID para máxima estabilidad)
+#Fotos en Telegram (Usar FILE_ID para máxima estabilidad)
 
 #🚨🚨 REEMPLAZA IMG_PHOTO1 CON TU OTRO FILE_ID 🚨🚨
 
