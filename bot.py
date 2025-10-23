@@ -29,19 +29,19 @@ Diccionario para almacenar el último uso del comando /bb por usuario
 BB_COOLDOWN = {}
 COOLDOWN_TIME = 20 # Tiempo de espera en segundos para reintentar
 
-🚨 MANTENIMIENTO FORZADO POR FALLO DE GATEWAY (Max Retries)
+#🚨 MANTENIMIENTO FORZADO POR FALLO DE GATEWAY (Max Retries)
 
 BB_MAINTENANCE = {}
 MAINTENANCE_TIME = 600 # 10 minutos en segundos (10 * 60)
 
-🚨 Cooldown para el comando masivo
+#🚨 Cooldown para el comando masivo
 
 MASS_COOLDOWN = {}
 MASS_COOLDOWN_TIME = 120 # 2 minutos de espera para el comando masivo
 
 Fotos en Telegram (Usar FILE_ID para máxima estabilidad)
 
-🚨🚨 REEMPLAZA IMG_PHOTO1 CON TU OTRO FILE_ID 🚨🚨
+#🚨🚨 REEMPLAZA IMG_PHOTO1 CON TU OTRO FILE_ID 🚨🚨
 
 IMG_PHOTO1 = "AgAD0QADlKxIL0z7_cT67p7pAASwzY020A4ABu8k9hFjI_TU_file_id_1_placeholder"
 IMG_PHOTO2 = "AgACAgEAAxkBAAE81YRo-UuWDmD16N0u1UZNGYRb3bp9kQACjgtrGy6KyUfGuhk5n4wzYQEAAwIAA3gAAzYE"
@@ -50,7 +50,7 @@ Flask app para webhook
 
 app = Flask(name)
 
-📌 Prefijos personalizados que el bot aceptará
+#📌 Prefijos personalizados que el bot aceptará
 
 CUSTOM_PREFIXES = ['.', '&']
 
