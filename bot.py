@@ -600,4 +600,172 @@ def is_command_with_prefix(message):
     first_word = parts[0].lower()
     
     prefixes = ['/'] + CUSTOM_PREFIXES
-    for prefix in prefixe
+    # 🚨 ESTA PARTE FALTABA O ESTABA INCOMPLETA 🚨
+    for prefix in prefixes:
+        if first_word.startswith(prefix):
+            command = first_word[len(prefix):]
+            if '@' in command:
+                command = command.split('@')[0]
+                
+            return command in ALL_COMMANDS
+            
+    return False
+
+@bot.message_handler(func=is_command_with_prefix)
+def handle_all_commands(message):
+    # La autorización ya fue verificada por el middleware 'unauthorized_access'
+
+    text_parts = message.text.split()
+    command_with_prefix = text_parts[0].lower()
+    
+    command_name = ""
+    prefixes = ['/'] + CUSTOM_PREFIXES
+    
+    for prefix in prefixes: 
+        if command_with_prefix.startswith(prefix):
+            command_name = command_with_prefix[len(prefix):]
+            if '@' in command_name:
+                command_name = command_name.split('@')[0]
+            break
+
+    if command_name in COMMAND_MAP:
+        new_text_parts = [f"/{command_name}"]
+        if len(text_parts) > 1:
+            new_text_parts.extend(text_parts[1:])
+        
+        message.text = " ".join(new_text_parts)
+        
+        COMMAND_MAP[command_name](message)
+
+
+# -----------------------------------
+## CALLBACK QUERY HANDLER
+# -----------------------------------
+
+@bot.callback_query_handler(func=lambda call: is_authorized_access(str(call.from_user.id)))
+def callback_query_handler(call):
+    # Definir los botones para poder reutilizarlos en las ediciones
+    buttons_cmds = [
+        [
+            types.InlineKeyboardButton('Gateways', callback_data='gates'),
+            types.InlineKeyboardButton('Herramientas', callback_data='tools')
+        ],
+        [types.InlineKeyboardButton('Cerrar', callback_data='close')]
+    ]
+    markup_buttom = types.InlineKeyboardMarkup(buttons_cmds)
+    
+    if call.data == 'gates':
+        text_gateways = """
+🌐 **LISTA DE GATEWAYS** 🌐
+ 
+- 💳 **/bb** → BB Gateway (Solo tarjeta)
+- 💳 **/ty** → SagePay Gateway (Solo tarjeta)
+- 🍔 **/mass bb** → Chequeo masivo (Hasta 10 tarjetas)
+"""
+        try:
+            bot.edit_message_caption(
+                chat_id=call.message.chat.id,
+                message_id=call.message.message_id,
+                caption=text_gateways,
+                reply_markup=markup_buttom,
+                parse_mode='HTML'
+            )
+            bot.answer_callback_query(call.id, text="Mostrando Gateways.")
+        except Exception:
+            bot.answer_callback_query(call.id, text="⚠️ No se pudo editar el mensaje.")
+            
+    elif call.data == 'tools':
+        text_tools = """
+🛠️ **HERRAMIENTAS** 🛠️
+
+- 🔢 **/gen** → Generador de CCs por BIN (Con BIN info)
+- 🔍 **/bin** → Buscador de BIN
+"""
+        try:
+            bot.edit_message_caption(
+                chat_id=call.message.chat.id,
+                message_id=call.message.message_id,
+                caption=text_tools,
+                reply_markup=markup_buttom,
+                parse_mode='HTML'
+            )
+            bot.answer_callback_query(call.id, text="Mostrando Herramientas.")
+        except Exception:
+            bot.answer_callback_query(call.id, text="⚠️ No se pudo editar el mensaje.")
+            
+    elif call.data == 'close':
+        try:
+            bot.edit_message_caption(
+                chat_id=call.message.chat.id,
+                message_id=call.message.message_id,
+                caption="<b>⚠️ Botonera cerrada. Vuelve a usar /cmds.</b>",
+                reply_markup=None, 
+                parse_mode='HTML'
+            )
+            bot.answer_callback_query(call.id, text="Botonera cerrada.")
+        except Exception:
+            bot.answer_callback_query(call.id, text="⚠️ No se pudo editar el mensaje.")
+
+
+# ==============================
+# WEBHOOK CONFIG
+# ==============================
+
+def binlist(bin: str) -> tuple | bool:
+    try:
+        # Nota: binlist.io es más rápido y estable que binlist.net o similar
+        result = requests.get(f'https://binlist.io/lookup/{bin}/').json()
+        return (
+            result['number']['iin'],
+            result['scheme'],
+            result['type'],
+            result['category'],
+            result['country']['name'],
+            result['country']['emoji'],
+            result['bank']['name']
+        )
+    except:
+        return False
+
+def dir_fake():
+    """Genera una dirección usando randomuser.me (más estable)."""
+    try:
+        r = requests.get("https://randomuser.me/api/", timeout=10)
+        if r.status_code != 200:
+            return None
+        data = r.json()["results"][0]
+        return {
+            "first_name": data["name"]["first"],
+            "last_name": data["name"]["last"],
+            "phone": data["phone"],
+            "city": data["location"]["city"],
+            "street_name": data["location"]["street"]["name"],
+            "street_address": str(data["location"]["street"]["number"]),
+            "zip": str(data["location"]["postcode"]),
+            "state": data["location"]["state"],
+            "country": data["location"]["country"],
+        }
+    except Exception as e:
+        print("Error en dir_fake:", e)
+        return None
+
+@app.route(f"/{TOKEN}", methods=["POST"])
+def webhook():
+    json_str = request.get_data().decode("UTF-8")
+    update = types.Update.de_json(json_str)
+    bot.process_new_updates([update])
+    return "!", 200
+
+
+if __name__ == "__main__":
+    PORT = int(os.getenv("PORT", 5000))
+    APP_URL = os.getenv("APP_URL")
+
+    if not APP_URL:
+        # En Railway, esta variable debe estar definida en las variables de entorno
+        raise ValueError("APP_URL no está definida en Railway Variables") 
+
+    bot.remove_webhook()
+    bot.set_webhook(url=f"{APP_URL}/{TOKEN}")
+
+    app.run(host="0.0.0.0", port=PORT)
