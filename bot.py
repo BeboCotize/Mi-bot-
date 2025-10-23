@@ -5,8 +5,9 @@ import time
 from flask import Flask, request
 from telebot import TeleBot, types
 from cc_gen import cc_gen
-# Asegúrate de que tu archivo 'gateway.py' esté subido junto con este código
+# Asegúrate de que tus archivos 'gateway.py' y 'sagepay.py' estén subidos
 from gateway import ccn_gate as bb_gateway_check 
+from sagepay import sagepay_check # <--- FUNCIÓN NECESARIA PARA /ty
  
 # ==============================
 # CONFIGURACIÓN 
@@ -15,91 +16,88 @@ from gateway import ccn_gate as bb_gateway_check
 TOKEN = os.getenv("BOT_TOKEN")
 bot = TeleBot(TOKEN, parse_mode='HTML')
 
-# 📌 ID de usuarios autorizados
-USERS = [
+# 📌 LISTAS DE USUARIOS PARA CONTROL DE SPAM Y ACCESO
+# WHITELIST: IDs con acceso al bot Y SIN spam (cooldown)
+WHITELIST = [
     '6116275760', '8470094114', '1073258864', '1337313600', '247556916']
+# BLACKLIST: IDs con acceso al bot PERO CON spam (cooldown)
+BLACKLIST = [
+    '0000000000' # Ejemplo: Agrega aquí los IDs que deben tener spam
+]
 
-# Diccionario para almacenar el último uso del comando /bb por usuario
+# Cooldowns y Tiempos
 BB_COOLDOWN = {} 
-COOLDOWN_TIME = 20 # Tiempo de espera en segundos para reintentar
+MASS_COOLDOWN = {}
+TY_COOLDOWN = {} 
+COOLDOWN_TIME = 20 
+MASS_COOLDOWN_TIME = 120 
 
-# 🚨 MANTENIMIENTO FORZADO POR FALLO DE GATEWAY (Max Retries)
+# Mantenimiento Forzado
 BB_MAINTENANCE = {}
-MAINTENANCE_TIME = 600 # 10 minutos en segundos (10 * 60)
+MAINTENANCE_TIME = 600 
 
-# 🚨 Cooldown para el comando masivo
-MASS_COOLDOWN = {} 
-MASS_COOLDOWN_TIME = 120 # 2 minutos de espera para el comando masivo
-
-# Fotos en Telegram (Usar FILE_ID para máxima estabilidad)
-# 🚨🚨 REEMPLAZA IMG_PHOTO1 CON TU OTRO FILE_ID 🚨🚨
+# Fotos en Telegram
 IMG_PHOTO1 = "AgAD0QADlKxIL0z7_cT67p7pAASwzY020A4ABu8k9hFjI_TU_file_id_1_placeholder" 
 IMG_PHOTO2 = "AgACAgEAAxkBAAE81YRo-UuWDmD16N0u1UZNGYRb3bp9kQACjgtrGy6KyUfGuhk5n4wzYQEAAwIAA3gAAzYE" 
 
 # Flask app para webhook
 app = Flask(__name__)
 
-# 📌 Prefijos personalizados que el bot aceptará
+# Prefijos y Comandos
 CUSTOM_PREFIXES = ['.', '&']
-# Lista de todos tus comandos (sin prefijo)
-ALL_COMMANDS = ['bin', 'rnd', 'gen', 'bb', 'mass', 'cmds', 'start', 'deluxe'] 
+ALL_COMMANDS = ['bin', 'rnd', 'gen', 'bb', 'mass', 'cmds', 'start', 'deluxe', 'ty'] 
 
 
 # ==============================
-# FUNCIONES AUXILIARES
+# FUNCIONES AUXILIARES DE AUTORIZACIÓN
 # ==============================
 
-def ver_user(iduser: str) -> bool:
-    return iduser in USERS
+def is_authorized_access(iduser: str) -> bool:
+    """Verifica si el ID tiene acceso general al bot (debe estar en la WHITELIST)."""
+    # Solo los IDs en WHITELIST tienen acceso general
+    return iduser in WHITELIST
 
-def binlist(bin: str) -> tuple | bool:
-    try:
-        # Nota: binlist.io es más rápido y estable que binlist.net o similar
-        result = requests.get(f'https://binlist.io/lookup/{bin}/').json()
-        return (
-            result['number']['iin'],
-            result['scheme'],
-            result['type'],
-            result['category'],
-            result['country']['name'],
-            result['country']['emoji'],
-            result['bank']['name']
-        )
-    except:
+def should_apply_cooldown(iduser: str) -> bool:
+    """
+    Determina si se debe aplicar el cooldown a un ID.
+    El cooldown se aplica a:
+    1. IDs en la BLACKLIST.
+    2. Cualquier ID que NO esté en la WHITELIST (pero que haya pasado el filtro de acceso general, aunque el filtro está arriba).
+    
+    Simplificamos: Si NO está en WHITELIST, se aplica el cooldown. 
+    (Si no está en WHITELIST, no debería llegar aquí por el filtro de acceso, pero es más seguro).
+    Adicionalmente, si está en BLACKLIST, TAMBIÉN se aplica.
+    """
+    # Si está en la WHITELIST, NO se aplica cooldown
+    if iduser in WHITELIST:
         return False
-
-def dir_fake():
-    """Genera una dirección usando randomuser.me (más estable)."""
-    try:
-        r = requests.get("https://randomuser.me/api/", timeout=10)
-        if r.status_code != 200:
-            return None
-        data = r.json()["results"][0]
-        return {
-            "first_name": data["name"]["first"],
-            "last_name": data["name"]["last"],
-            "phone": data["phone"],
-            "city": data["location"]["city"],
-            "street_name": data["location"]["street"]["name"],
-            "street_address": str(data["location"]["street"]["number"]),
-            "zip": str(data["location"]["postcode"]),
-            "state": data["location"]["state"],
-            "country": data["location"]["country"],
-        }
-    except Exception as e:
-        print("Error en dir_fake:", e)
-        return None
+    # Si está en la BLACKLIST, SÍ se aplica cooldown
+    if iduser in BLACKLIST:
+        return True
+    
+    # Por defecto, si el usuario no es ni WL ni BL, y de alguna manera llega, le aplicamos.
+    # Pero el filtro de acceso general debería ser suficiente.
+    # La manera más clara es: Cooldown si está en BL O si no está en WL.
+    return iduser in BLACKLIST or iduser not in WHITELIST
 
 
 # ==============================
-# HANDLERS (COMANDOS)
+# MIDDLEWARE DE ACCESO GENERAL (BLOQUEO)
+# ==============================
+
+@bot.message_handler(func=lambda message: not is_authorized_access(str(message.from_user.id)))
+def unauthorized_access(message):
+    """Bloquea CUALQUIER comando o mensaje si no está en la WHITELIST."""
+    if message.chat.type == 'private':
+        text = "❌ **Acceso Denegado.**\nTu ID no está autorizado para usar este bot."
+        bot.reply_to(message, text)
+
+# ==============================
+# HANDLERS (COMANDOS) - LÓGICA COOLDOWN AJUSTADA
 # ==============================
 
 def bin_cmd(message):
-    userid = str(message.from_user.id)
-    if not ver_user(userid):
-        return bot.reply_to(message, 'No estás autorizado.')
-
+    # ... (código sin cambios) ...
     if message.reply_to_message:
         search_bin = re.findall(r'[0-9]+', str(message.reply_to_message.text))
     else:
@@ -124,10 +122,7 @@ def bin_cmd(message):
 
 
 def rand(message):
-    userid = str(message.from_user.id)
-    if not ver_user(userid):
-        return bot.reply_to(message, 'No estás autorizado.')
-
+    # ... (código sin cambios) ...
     data = dir_fake()
     if not data:
         return bot.reply_to(message, '⚠️ Error obteniendo dirección.')
@@ -143,10 +138,7 @@ def rand(message):
 
 
 def gen(message):
-    userid = str(message.from_user.id)
-    if not ver_user(userid):
-        return bot.reply_to(message, 'No estás autorizado.')
-
+    # ... (código sin cambios) ...
     text_after_command = " ".join(message.text.split()[1:])
     inputcc = re.findall(r'[0-9x]+', text_after_command)
     
@@ -185,13 +177,11 @@ def gen(message):
 
 def gate_bb(message):
     userid = str(message.from_user.id)
-    if not ver_user(userid):
-        return bot.reply_to(message, 'No estás autorizado.')
-    
     current_time = time.time()
     
     # 🚨 LÓGICA DE MANTENIMIENTO FORZADO 🚨
     if userid in BB_MAINTENANCE and current_time < BB_MAINTENANCE[userid]:
+        # ... (código de mantenimiento sin cambios) ...
         remaining = int(BB_MAINTENANCE[userid] - current_time)
         minutes = remaining // 60
         seconds = remaining % 60
@@ -200,17 +190,18 @@ def gate_bb(message):
             f"🛠️ Comando /bb en mantenimiento forzado (Max Retries). Por favor, espera {minutes} minutos y {seconds} segundos."
         )
 
-    # === LÓGICA DE COOLDOWN (SPAM-LOCK) ===
-    if userid in BB_COOLDOWN:
-        time_elapsed = current_time - BB_COOLDOWN[userid]
-        if time_elapsed < COOLDOWN_TIME:
-            remaining = int(COOLDOWN_TIME - time_elapsed)
-            return bot.reply_to(
-                message, 
-                f"🚫 ¡Alto ahí! Debes esperar {remaining} segundos antes de volver a usar /bb."
-            )
+    # === LÓGICA DE COOLDOWN (SPAM-LOCK) AJUSTADA ===
+    if should_apply_cooldown(userid):
+        if userid in BB_COOLDOWN:
+            time_elapsed = current_time - BB_COOLDOWN[userid]
+            if time_elapsed < COOLDOWN_TIME:
+                remaining = int(COOLDOWN_TIME - time_elapsed)
+                return bot.reply_to(
+                    message, 
+                    f"🚫 ¡Alto ahí! Debes esperar {remaining} segundos antes de volver a usar /bb."
+                )
     
-    # 1. Preparar el texto de entrada
+    # ... (Resto de la lógica de chequeo del BB Gateway sin cambios) ...
     raw_text = message.reply_to_message.text if message.reply_to_message else message.text
     clean = raw_text.replace("/bb", "").strip() if not message.reply_to_message else raw_text.strip()
     
@@ -226,16 +217,13 @@ def gate_bb(message):
 
     cc, mes, ano, cvv = parts[0:4]
     
-    # 2. ENVIAR EL MENSAJE INICIAL Y CAPTURAR SU ID
     initial_message = bot.reply_to(message, "⚙️ Chequeando con BB Gateway...") 
     chat_id = initial_message.chat.id
     message_id = initial_message.message_id
 
     try:
-        # LLAMADA A TU GATEWAY MODIFICADO (devuelve string con status)
         status_message = bb_gateway_check(f"{cc}|{mes}|{ano}|{cvv}")
         
-        # 3. Parseamos el resultado para el formato final
         if "APROBADO" in status_message or "APPROVED" in status_message:
             status = "APPROVED"
             emoji = "✅"
@@ -248,21 +236,15 @@ def gate_bb(message):
             status = "ERROR"
             emoji = "⚠️"
             
-            # 🚨 GESTIÓN DE ERROR Y MANTENIMIENTO
             if "Max Retries" in status_message:
                 message_detail = "Fallo de conexión o límite de intentos. Comando bloqueado por 10 min."
-                
-                # ACTIVAR MANTENIMIENTO FORZADO POR 10 MINUTOS
                 BB_MAINTENANCE[userid] = time.time() + MAINTENANCE_TIME
-                
             else:
                 message_detail = status_message
             
-        # 4. Obtenemos información adicional para el formato
         bin_number = cc[0:6]
         binsito = binlist(bin_number)
         
-        # 5. Creamos el mensaje final con el formato deseado
         final_text = f"""
 {emoji} CARD --> <code>{cc}|{mes}|{ano}|{cvv}</code>
 {emoji} STATUS --> <b>{status}</b> {emoji}
@@ -278,10 +260,11 @@ def gate_bb(message):
         final_text = f"❌ Error ejecutando BB Gateway:\n{e}"
         print(f"Error en gate_bb: {e}")
         
-    # === ACTUALIZAR EL COOLDOWN (SOLO SI EL CHECK SE EJECUTÓ) ===
-    BB_COOLDOWN[userid] = time.time()
+    # === ACTUALIZAR EL COOLDOWN (SOLO si debe aplicarse) ===
+    if should_apply_cooldown(userid):
+        BB_COOLDOWN[userid] = time.time()
 
-    # 6. EDITAR el mensaje inicial con la respuesta final
+    # ... (Edición del mensaje sin cambios) ...
     try:
         bot.edit_message_text(
             chat_id=chat_id, 
@@ -296,13 +279,11 @@ def gate_bb(message):
 
 def mass_bb(message):
     userid = str(message.from_user.id)
-    if not ver_user(userid):
-        return bot.reply_to(message, 'No estás autorizado.')
-
     current_time = time.time()
     
-    # 🚨 LÓGICA DE MANTENIMIENTO FORZADO (Compartido con /bb) 🚨
+    # 🚨 LÓGICA DE MANTENIMIENTO FORZADO 🚨
     if userid in BB_MAINTENANCE and current_time < BB_MAINTENANCE[userid]:
+        # ... (código de mantenimiento sin cambios) ...
         remaining = int(BB_MAINTENANCE[userid] - current_time)
         minutes = remaining // 60
         seconds = remaining % 60
@@ -311,30 +292,29 @@ def mass_bb(message):
             f"🛠️ Comando /mass bb en mantenimiento forzado (Max Retries). Por favor, espera {minutes} minutos y {seconds} segundos."
         )
 
-    # === LÓGICA DE COOLDOWN PARA MASS ===
-    if userid in MASS_COOLDOWN:
-        time_elapsed = current_time - MASS_COOLDOWN[userid]
-        if time_elapsed < MASS_COOLDOWN_TIME:
-            remaining = int(MASS_COOLDOWN_TIME - time_elapsed)
-            return bot.reply_to(
-                message, 
-                f"🚫 ¡Calma! Debes esperar {remaining} segundos antes de volver a usar .mass bb."
-            )
+    # === LÓGICA DE COOLDOWN PARA MASS AJUSTADA ===
+    if should_apply_cooldown(userid):
+        if userid in MASS_COOLDOWN:
+            time_elapsed = current_time - MASS_COOLDOWN[userid]
+            if time_elapsed < MASS_COOLDOWN_TIME:
+                remaining = int(MASS_COOLDOWN_TIME - time_elapsed)
+                return bot.reply_to(
+                    message, 
+                    f"🚫 ¡Calma! Debes esperar {remaining} segundos antes de volver a usar .mass bb."
+                )
     
-    # 1. Extraer el texto de la CCs
+    # ... (Resto de la lógica de chequeo masivo sin cambios) ...
     raw_text = message.reply_to_message.text if message.reply_to_message else message.text
     clean = raw_text.replace("/mass", "").strip() if not message.reply_to_message else raw_text.strip()
     
-    # Dividir el texto para encontrar las tarjetas (separadas por línea, espacio o barra)
     cc_lines = re.split(r'[\n\s]+', clean)
 
-    # 2. Parsear y validar las tarjetas
     cards_to_check = []
     cc_pattern = re.compile(r'(\d{12,16})[|](\d{1,2})[|](\d{2,4})[|](\d{3,4})')
     
     for line in cc_lines:
         match = cc_pattern.search(line)
-        if match and len(cards_to_check) < 10: # Limitamos a 10 tarjetas
+        if match and len(cards_to_check) < 10:
             cc, mes, ano, cvv = match.groups()
             cards_to_check.append(f"{cc}|{mes}|{ano}|{cvv}")
     
@@ -348,7 +328,6 @@ def mass_bb(message):
     
     total_cards = len(cards_to_check)
     
-    # 3. ENVIAR MENSAJE INICIAL
     initial_message = bot.reply_to(
         message, 
         f"⚙️ Iniciando chequeo masivo de {total_cards} tarjetas con BB Gateway..."
@@ -359,14 +338,11 @@ def mass_bb(message):
     results = []
     maintenance_triggered = False
     
-    # 4. Procesar cada tarjeta con LIVE EDITING
     for i, full_cc in enumerate(cards_to_check, 1):
         cc, mes, ano, cvv = full_cc.split('|')
         
-        # 4.1. Actualizar mensaje de progreso (mostrando lo que se está chequeando)
         progress_msg_base = f"⚙️ Chequeando Tarjeta {i}/{total_cards}: <code>{full_cc}</code>"
         
-        # 4.2. Intentar editar el mensaje antes del check para mostrar la CC actual
         try:
             bot.edit_message_text(
                 chat_id=chat_id,
@@ -375,7 +351,7 @@ def mass_bb(message):
                 parse_mode='HTML'
             )
         except:
-            pass # Ignorar errores de edición si ocurren
+            pass
         
         
         try:
@@ -401,18 +377,16 @@ def mass_bb(message):
             bin_number = cc[0:6]
             binsito = binlist(bin_number)
             
-            # --- Formato PRO mejorado para cada resultado ---
             result_line = f"""
 {status_emoji} <b>STATUS: {status_bold}</b>
 💳 CARD: <code>{full_cc}</code>
 📄 MESSAGE: <b>{message_detail}</b>
 🏦 BANK: {binsito[6]}
 🌎 COUNTRY: {binsito[4]} {binsito[5]}
-━━━━━━━━━━━━━━━""" # Separador para que no se vea pegado
+━━━━━━━━━━━━━━━"""
 
             results.append(result_line)
             
-            # 4.3. Editar el mensaje con el resultado acumulado de la CC recién chequeada
             current_result_text = "\n".join(results)
             
             progress_text = f"""
@@ -430,11 +404,9 @@ def mass_bb(message):
                     parse_mode='HTML'
                 )
             except Exception as edit_error:
-                # Si falla la edición, imprimir el error y continuar
                 print(f"Error al editar mensaje de progreso: {edit_error}")
 
 
-            # Si se activa el mantenimiento, salimos del bucle
             if maintenance_triggered:
                 break
             
@@ -443,12 +415,10 @@ def mass_bb(message):
             results.append(error_line)
             print(f"Error en mass_bb para {full_cc}: {e}")
             
-    # 5. Aplicar mantenimiento si se detectó el error
     if maintenance_triggered:
         BB_MAINTENANCE[userid] = time.time() + MAINTENANCE_TIME
         results.append("\n\n⚠️ MANTENIMIENTO FORZADO ACTIVADO: Comando /bb y /mass bb bloqueados por 10 minutos.")
         
-    # 6. Formatear y enviar resultado FINAL
     final_text = f"""
 🔹 CHEQUEO MASIVO BB GATEWAY 🔹
 ━━━━━━━━━━━━━━━
@@ -457,10 +427,10 @@ def mass_bb(message):
 🌐 **Total Chequeado:** {total_cards}
 """
     
-    # === ACTUALIZAR EL COOLDOWN ===
-    MASS_COOLDOWN[userid] = time.time()
+    # === ACTUALIZAR EL COOLDOWN (SOLO si debe aplicarse) ===
+    if should_apply_cooldown(userid):
+        MASS_COOLDOWN[userid] = time.time()
 
-    # 7. EDITAR el mensaje por última vez con el resultado final
     try:
         bot.edit_message_text(
             chat_id=chat_id, 
@@ -469,10 +439,97 @@ def mass_bb(message):
             parse_mode='HTML'
         )
     except Exception as edit_error:
-        # Si la edición final falla, envía uno nuevo como respaldo.
         bot.send_message(chat_id=chat_id, text=final_text, parse_mode='HTML')
         print(f"Error al editar mensaje final: {edit_error}")
 
+
+def ty_cmd(message):
+    userid = str(message.from_user.id)
+    current_time = time.time()
+    
+    # === LÓGICA DE COOLDOWN (SPAM-LOCK) AJUSTADA ===
+    if should_apply_cooldown(userid):
+        if userid in TY_COOLDOWN:
+            time_elapsed = current_time - TY_COOLDOWN[userid]
+            if time_elapsed < COOLDOWN_TIME:
+                remaining = int(COOLDOWN_TIME - time_elapsed)
+                return bot.reply_to(
+                    message, 
+                    f"🚫 ¡Alto ahí! Debes esperar {remaining} segundos antes de volver a usar /ty."
+                )
+    
+    # ... (Resto de la lógica del SagePay Gateway sin cambios) ...
+    raw_text = message.reply_to_message.text if message.reply_to_message else message.text
+    clean = raw_text.replace("/ty", "").strip() if not message.reply_to_message else raw_text.strip()
+    
+    parts = re.split(r"[| \n\t]+", clean)
+
+    if len(parts) < 4:
+        return bot.reply_to(
+            message,
+            "⚠️ Formato inválido.\nEjemplo:\n"
+            "`/ty 4111111111111111|12|2026|123`",
+            parse_mode="Markdown"
+        )
+
+    cc, mes, ano, cvv = parts[0:4]
+    
+    initial_message = bot.reply_to(message, "⚙️ Chequeando con SagePay Gateway...") 
+    chat_id = initial_message.chat.id
+    message_id = initial_message.message_id
+
+    try:
+        status_message = sagepay_check(f"{cc}|{mes}|{ano}|{cvv}")
+        
+        if "APROBADO" in status_message or "APPROVED" in status_message:
+            status = "APPROVED"
+            emoji = "✅"
+            message_detail = status_message.split(":")[-1].strip()
+        elif "DECLINADO" in status_message or "DECLINED" in status_message:
+            status = "DECLINED"
+            emoji = "❌"
+            message_detail = status_message.split(":")[-1].strip()
+        else:
+            status = "ERROR"
+            emoji = "⚠️"
+            message_detail = status_message
+            
+        bin_number = cc[0:6]
+        binsito = binlist(bin_number)
+        
+        final_text = f"""
+{emoji} CARD --> <code>{cc}|{mes}|{ano}|{cvv}</code>
+{emoji} STATUS --> <b>{status}</b> {emoji}
+{emoji} MESSAGE --> <b>{message_detail}</b>
+[GATEWAY] <b>[SagePay Gateway]</b>
+
+[BIN INFO]
+{emoji} BIN --> <b>{binsito[1]} {binsito[2]}</b>
+{emoji} BANK --> <b>{binsito[6]}</b>
+{emoji} COUNTRY --> <b>{binsito[4]} {binsito[5]}</b>
+"""
+    except Exception as e:
+        final_text = f"❌ Error ejecutando SagePay Gateway:\n{e}"
+        print(f"Error en ty_cmd: {e}")
+        
+    # === ACTUALIZAR EL COOLDOWN (SOLO si debe aplicarse) ===
+    if should_apply_cooldown(userid):
+        TY_COOLDOWN[userid] = time.time()
+
+    try:
+        bot.edit_message_text(
+            chat_id=chat_id, 
+            message_id=message_id, 
+            text=final_text, 
+            parse_mode='HTML'
+        )
+    except Exception as edit_error:
+        bot.send_message(chat_id=chat_id, text=final_text, parse_mode='HTML')
+        print(f"Error al editar mensaje: {edit_error}")
+        
+# -----------------------------------
+## COMANDOS GENERALES
+# -----------------------------------
 
 def cmds(message):
     buttons_cmds = [
@@ -487,7 +544,7 @@ def cmds(message):
 
     bot.send_photo(
         chat_id=message.chat.id,
-        photo=IMG_PHOTO1, # Usa FILE_ID
+        photo=IMG_PHOTO1, 
         caption=text,
         reply_to_message_id=message.id,
         reply_markup=markup_buttom
@@ -501,7 +558,7 @@ def start(message):
 • Info: /Deluxe
 🚸 @DuluxeChk
 """
-    bot.send_photo(chat_id=message.chat.id, photo=IMG_PHOTO2, caption=text) # Usa FILE_ID
+    bot.send_photo(chat_id=message.chat.id, photo=IMG_PHOTO2, caption=text)
 
 
 def deluxe(message):
@@ -512,11 +569,11 @@ def deluxe(message):
 - Difamación = ban
 - Robo de gates = ban
 """
-    bot.send_photo(chat_id=message.chat.id, photo=IMG_PHOTO1, caption=text) # Usa FILE_ID
+    bot.send_photo(chat_id=message.chat.id, photo=IMG_PHOTO1, caption=text)
 
 
 # ==============================
-# ROUTER DE COMANDOS CON PREFIJOS
+# ROUTER Y MAPEO DE COMANDOS
 # ==============================
 
 COMMAND_MAP = {
@@ -524,10 +581,11 @@ COMMAND_MAP = {
     'rnd': rand,
     'gen': gen,
     'bb': gate_bb,
-    'mass': mass_bb, # Comando masivo
+    'mass': mass_bb, 
     'cmds': cmds,
     'start': start,
     'deluxe': deluxe,
+    'ty': ty_cmd,
 }
 
 def is_command_with_prefix(message):
@@ -542,60 +600,4 @@ def is_command_with_prefix(message):
     first_word = parts[0].lower()
     
     prefixes = ['/'] + CUSTOM_PREFIXES
-    for prefix in prefixes:
-        if first_word.startswith(prefix):
-            command = first_word[len(prefix):]
-            if '@' in command:
-                command = command.split('@')[0]
-                
-            return command in ALL_COMMANDS
-            
-    return False
-
-@bot.message_handler(func=is_command_with_prefix)
-def handle_all_commands(message):
-    text_parts = message.text.split()
-    command_with_prefix = text_parts[0].lower()
-    
-    command_name = ""
-    prefixes = ['/'] + CUSTOM_PREFIXES
-    for prefix in prefixes:
-        if command_with_prefix.startswith(prefix):
-            command_name = command_with_prefix[len(prefix):]
-            if '@' in command_name:
-                command_name = command_name.split('@')[0]
-            break
-
-    if command_name in COMMAND_MAP:
-        new_text_parts = [f"/{command_name}"]
-        if len(text_parts) > 1:
-            new_text_parts.extend(text_parts[1:])
-        
-        message.text = " ".join(new_text_parts)
-        
-        COMMAND_MAP[command_name](message)
-
-
-# ==============================
-# WEBHOOK CONFIG
-# ==============================
-
-@app.route(f"/{TOKEN}", methods=["POST"])
-def webhook():
-    json_str = request.get_data().decode("UTF-8")
-    update = types.Update.de_json(json_str)
-    bot.process_new_updates([update])
-    return "!", 200
-
-
-if __name__ == "__main__":
-    PORT = int(os.getenv("PORT", 5000))
-    APP_URL = os.getenv("APP_URL")
-
-    if not APP_URL:
-        raise ValueError("APP_URL no está definida en Railway Variables") 
-
-    bot.remove_webhook()
-    bot.set_webhook(url=f"{APP_URL}/{TOKEN}")
-
-    app.run(host="0.0.0.0", port=PORT)
+    for prefix in prefixe
