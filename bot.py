@@ -19,7 +19,7 @@ CONFIGURACIÓN
 TOKEN = os.getenv("BOT_TOKEN")
 bot = TeleBot(TOKEN, parse_mode='HTML')
 
-📌 ID de usuarios autorizados
+#📌 ID de usuarios autorizados
 
 USERS = [
 '6116275760', '8470094114', '1073258864']
