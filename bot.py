@@ -21,7 +21,7 @@ bot = TeleBot(TOKEN, parse_mode='HTML')
 
 # 📌 ID de usuarios autorizados (solo estos IDs pueden usar los comandos)
 USERS = [
-    '6116275760', '8470094114', '1073258864']
+    '6116275760', '8470094114', '1073258864', '7457808814']
 
 # Diccionario para almacenar el último uso del comando /bb por usuario (para evitar spam)
 BB_COOLDOWN = {}
