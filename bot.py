@@ -508,7 +508,7 @@ def mass_bb(message):
         print(f"Error al editar mensaje final: {edit_error}") 
 
 # ==============================
-# 🆕 NUEVA FUNCIÓN: Comando /ty (SagePay)
+# 🆕 NUEVA FUNCIÓN: Comando /ty (SagePay) - ¡CORREGIDA!
 # ==============================
 
 def gate_ty(message):
@@ -541,21 +541,40 @@ def gate_ty(message):
     
     try:
         # LLAMADA A LA FUNCIÓN DE SAGEPAY (ccn_gate de sagepay.py)
-        status_message = ccn_gate(full_cc_str) # Llama a la función importada
+        # ccn_gate devuelve: STATUS|MESSAGE|CODE|
+        raw_output = ccn_gate(full_cc_str) # Llama a la función importada
         
-        # 3. Parseamos el resultado (lógica de parsing similar a otros comandos)
-        if "APROBADO" in status_message or "APPROVED" in status_message: 
-            status = "APPROVED" 
-            emoji = "✅" 
-            message_detail = status_message.split(":")[-1].strip() 
-        elif "DECLINADO" in status_message or "DECLINED" in status_message: 
-            status = "DECLINED" 
-            emoji = "❌" 
-            message_detail = status_message.split(":")[-1].strip() 
-        else: 
-            status = "ERROR" 
-            emoji = "⚠️" 
-            message_detail = status_message 
+        # 3. Parseamos el resultado (CORRECCIÓN CRÍTICA AQUÍ)
+        output_parts = raw_output.strip().split('|')
+
+        # Se espera: [STATUS, MESSAGE, CODE, ''] -> 4 partes
+        if len(output_parts) >= 3:
+            status = output_parts[0].strip()
+            message_detail = output_parts[1].strip()
+            # code = output_parts[2].strip() # Opcionalmente puedes usar el código
+
+            emoji = "⚠️"
+            if "APPROVED" in status:
+                status_text = "APPROVED"
+                emoji = "✅"
+            elif "DECLINED" in status:
+                status_text = "DECLINED"
+                emoji = "❌"
+            elif "PROBABLE LIVE" in status:
+                status_text = "PROBABLE LIVE"
+                emoji = "⚡"
+            elif "ERROR" in status:
+                status_text = "ERROR"
+                emoji = "⚠️"
+            else:
+                status_text = status
+
+        else:
+            # Fallback si el formato no es el esperado
+            status_text = "ERROR"
+            emoji = "⚠️"
+            message_detail = f"Formato de respuesta inválido: {raw_output}"
+
         
         # 4. Obtenemos información adicional
         bin_number = cc[0:6] 
@@ -565,7 +584,7 @@ def gate_ty(message):
         final_text = f"""
         
 {emoji} CARD --> {full_cc_str}
-{emoji} STATUS --> {status} {emoji}
+{emoji} STATUS --> {status_text} {emoji}
 {emoji} MESSAGE --> {message_detail}
 [GATEWAY] [SagePay Gateway]
 
