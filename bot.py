@@ -42,6 +42,10 @@ MAINTENANCE_TIME = 600 # 10 minutos en segundos (10 * 60)
 MASS_COOLDOWN = {}
 MASS_COOLDOWN_TIME = 120 # 2 minutos de espera para el comando masivo
 
+# 🚨 Cooldown específico para el comando masivo /massty
+MASS_TY_COOLDOWN = {}
+MASS_TY_COOLDOWN_TIME = 120 # 2 minutos de espera para el comando masivo TY
+
 # Fotos en Telegram (Usar FILE_ID para máxima estabilidad y velocidad)
 # **⚠️ REEMPLAZA ESTOS CON TUS FILE_ID REALES ⚠️**
 IMG_PHOTO1 = "AgAD0QADlKxIL0z7_cT67p7pAASwzY020A4ABu8k9hFjI_TU_file_id_1_placeholder"
@@ -54,8 +58,8 @@ app = Flask(__name__)
 CUSTOM_PREFIXES = ['.', '&']
 
 # Lista de todos tus comandos (sin prefijo) para el router
-# ⬆️ AÑADIDO 'ty'
-ALL_COMMANDS = ['bin', 'rnd', 'gen', 'bb', 'mass', 'cmds', 'start', 'deluxe', 'ty']
+# ⬆️ AÑADIDO 'ty' y 'massty'
+ALL_COMMANDS = ['bin', 'rnd', 'gen', 'bb', 'mass', 'cmds', 'start', 'deluxe', 'ty', 'massty']
 
 # ==============================
 # FUNCIONES AUXILIARES
@@ -508,7 +512,7 @@ def mass_bb(message):
         print(f"Error al editar mensaje final: {edit_error}") 
 
 # ==============================
-# 🆕 NUEVA FUNCIÓN: Comando /ty (SagePay) - ¡CORREGIDA!
+# 🆕 NUEVA FUNCIÓN: Comando /ty (SagePay)
 # ==============================
 
 def gate_ty(message):
@@ -610,6 +614,167 @@ def gate_ty(message):
         bot.send_message(chat_id=chat_id, text=final_text, parse_mode='HTML') 
         print(f"Error al editar mensaje: {edit_error}") 
 
+# ==============================
+# 🆕 NUEVA FUNCIÓN: Comando /massty (SagePay Mass)
+# ==============================
+
+def mass_ty(message):
+    """Maneja el comando /massty para chequear múltiples tarjetas con el SagePay Gateway."""
+    userid = str(message.from_user.id)
+    if not ver_user(userid):
+        return bot.reply_to(message, 'No estás autorizado.')
+
+    current_time = time.time() 
+    
+    # === LÓGICA DE COOLDOWN PARA MASS TY === 
+    if userid in MASS_TY_COOLDOWN: 
+        time_elapsed = current_time - MASS_TY_COOLDOWN[userid] 
+        if time_elapsed < MASS_TY_COOLDOWN_TIME: 
+            remaining = int(MASS_TY_COOLDOWN_TIME - time_elapsed) 
+            return bot.reply_to( 
+                message, 
+                f"🚫 ¡Calma! Debes esperar {remaining} segundos antes de volver a usar /massty." 
+            ) 
+    
+    # 1. Extraer el texto de las CCs (del reply o del mensaje directo)
+    raw_text = message.reply_to_message.text if message.reply_to_message else message.text 
+    clean = raw_text.replace("/massty", "").strip() if not message.reply_to_message else raw_text.strip() 
+    
+    # Dividir el texto para encontrar las tarjetas (separadas por línea, espacio o barra) 
+    cc_lines = re.split(r'[\n\s]+', clean) 
+    
+    # 2. Parsear y validar las tarjetas
+    cards_to_check = [] 
+    # Patrón para encontrar tarjetas en formato CC|MM|YYYY|CVV
+    cc_pattern = re.compile(r'(\d{12,16})[|](\d{1,2})[|](\d{2,4})[|](\d{3,4})') 
+    
+    for line in cc_lines: 
+        match = cc_pattern.search(line) 
+        if match and len(cards_to_check) < 10: # Limita el chequeo masivo a 10 tarjetas 
+            cc, mes, ano, cvv = match.groups() 
+            cards_to_check.append(f"{cc}|{mes}|{ano}|{cvv}") 
+    
+    if not cards_to_check: 
+        return bot.reply_to( 
+            message, 
+            "⚠️ Formato inválido o tarjetas no detectadas. Asegúrate de usar el formato:\n" 
+            "`/massty 4111...|12|2026|123` (hasta 10 líneas)", 
+            parse_mode="Markdown" 
+        ) 
+    
+    total_cards = len(cards_to_check) 
+    
+    # 3. ENVIAR MENSAJE INICIAL (para luego editarlo y mostrar el progreso)
+    initial_message = bot.reply_to( 
+        message, 
+        f"⚙️ Iniciando chequeo masivo de {total_cards} tarjetas con SagePay Gateway..." 
+    ) 
+    chat_id = initial_message.chat.id 
+    message_id = initial_message.message_id 
+    results = [] # Lista para guardar los resultados de cada tarjeta
+    
+    # 4. Procesar cada tarjeta con LIVE EDITING 
+    for i, full_cc in enumerate(cards_to_check, 1): 
+        cc, mes, ano, cvv = full_cc.split('|') 
+        
+        # 4.1. Mensaje base de progreso 
+        current_result_text = "\n".join(results) 
+        progress_text = f"""
+            
+🔹 CHEQUEO MASIVO SAGEPAY GATEWAY 🔹
+━━━━━━━━━━━━━━━
+🌐 PROGRESO: {i}/{total_cards}
+💳 TARJETA: <code>{full_cc}</code>
+━━━━━━━━━━━━━━━
+**Resultados Previos:**
+{current_result_text}"""
+        
+        # 4.2. Intentar editar el mensaje antes del check para mostrar la CC actual 
+        try: 
+            bot.edit_message_text( 
+                chat_id=chat_id, 
+                message_id=message_id, 
+                text=progress_text, 
+                parse_mode='HTML' 
+            ) 
+        except: 
+            pass # Ignorar errores de edición si ocurren 
+        
+        try: 
+            # Llama al Gateway para chequear la CC (SagePay)
+            raw_output = ccn_gate(full_cc)
+            output_parts = raw_output.strip().split('|')
+
+            emoji = "⚠️"
+            if len(output_parts) >= 3:
+                status = output_parts[0].strip()
+                message_detail = output_parts[1].strip()
+
+                if "APPROVED" in status:
+                    status_emoji = "✅" 
+                    status_bold = "APROBADA"
+                elif "DECLINED" in status:
+                    status_emoji = "❌" 
+                    status_bold = "DECLINADA"
+                elif "PROBABLE LIVE" in status:
+                    status_emoji = "⚡"
+                    status_bold = "PROBABLE LIVE"
+                else:
+                    status_emoji = "⚠️"
+                    status_bold = "ERROR"
+            else:
+                status_emoji = "⚠️"
+                status_bold = "ERROR"
+                message_detail = f"Formato de respuesta inválido: {raw_output}"
+
+            bin_number = cc[0:6] 
+            binsito = binlist(bin_number) 
+            
+            # --- Formato PRO mejorado para cada resultado --- 
+            result_line = f"""
+{status_emoji} STATUS: {status_bold}
+💳 CARD: <code>{full_cc}</code>
+📄 MESSAGE: {message_detail}
+🏦 BANK: {binsito[6]}
+🌎 COUNTRY: {binsito[4]} {binsito[5]}
+━━━━━━━━━━━━━━━"""
+            
+            results.append(result_line) 
+            
+            time.sleep(1) # Pequeña pausa para evitar sobrecarga y errores de edición
+        
+        except Exception as e: 
+            # Manejo de excepciones durante el chequeo de la CC
+            error_line = f"💳 <code>{full_cc}</code> | ❌ ERROR (Excepción: {str(e)})" 
+            results.append(error_line) 
+            print(f"Error en mass_ty para {full_cc}: {e}") 
+    
+    # 5. Formatear y enviar resultado FINAL 
+    final_text = f"""
+    
+🔹 CHEQUEO MASIVO SAGEPAY GATEWAY 🔹
+━━━━━━━━━━━━━━━
+{chr(10).join(results)}
+━━━━━━━━━━━━━━━
+🌐 Total Chequeado: {total_cards}
+"""
+    
+    # === ACTUALIZAR EL COOLDOWN === 
+    MASS_TY_COOLDOWN[userid] = time.time() 
+    
+    # 6. EDITAR el mensaje por última vez con el resultado final 
+    try: 
+        bot.edit_message_text( 
+            chat_id=chat_id, 
+            message_id=message_id, 
+            text=final_text, 
+            parse_mode='HTML' 
+        ) 
+    except Exception as edit_error: 
+        # Si la edición final falla, envía uno nuevo como respaldo. 
+        bot.send_message(chat_id=chat_id, text=final_text, parse_mode='HTML') 
+        print(f"Error al editar mensaje final: {edit_error}") 
+
 def cmds(message):
     """Maneja el comando /cmds para mostrar el menú de comandos con botones."""
     # Define la estructura de los botones Inline
@@ -664,17 +829,18 @@ def deluxe(message):
 # ==============================
 
 # Mapeo de nombres de comandos a sus funciones handler
-# ⬆️ AÑADIDO el nuevo comando 'ty'
+# ⬆️ AÑADIDO 'ty' y 'massty'
 COMMAND_MAP = {
     'bin': bin_cmd,
     'rnd': rand,
     'gen': gen,
     'bb': gate_bb,
-    'mass': mass_bb, # Comando masivo
+    'mass': mass_bb, # Comando masivo BB
     'cmds': cmds,
     'start': start,
     'deluxe': deluxe,
-    'ty': gate_ty, # <<<<--- NUEVO COMANDO MAPEADO
+    'ty': gate_ty, 
+    'massty': mass_ty, # <<<<--- NUEVO COMANDO MAPEADO
 }
 
 def is_command_with_prefix(message):
