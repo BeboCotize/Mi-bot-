@@ -11,7 +11,7 @@ from cc_gen import cc_gen # Importa la función para generar tarjetas (debe exis
 from gateway import ccn_gate as bb_gateway_check # Importa la función del checker/gateway (debe existir gateway.py)
 
 # ====================================================================================================
-# 🆕 NUEVA IMPORTACIÓN PARA EL COMANDO /ty
+# 🆕 NUEVA IMPORTACIÓN PARA EL COMANDO /ty (SAGEPAY)
 # ====================================================================================================
 # Asegúrate de que tu archivo 'sagepay.py' esté subido junto con este código
 from sagepay import ccn_gate # Importa la función ccn_gate de sagepay.py
@@ -54,7 +54,7 @@ app = Flask(__name__)
 CUSTOM_PREFIXES = ['.', '&']
 
 # Lista de todos tus comandos (sin prefijo) para el router
-# ⬆️ AÑADIDO 'ty' a la lista de comandos válidos
+# ⬆️ AÑADIDO 'ty'
 ALL_COMMANDS = ['bin', 'rnd', 'gen', 'bb', 'mass', 'cmds', 'start', 'deluxe', 'ty']
 
 # ==============================
@@ -713,7 +713,8 @@ def handle_all_commands(message):
 def webhook():
     """Ruta para recibir las actualizaciones de Telegram (Webhook)."""
     json_str = request.get_data().decode("UTF-8")
-    update = types.Update.to_json(json_str)
+    # ✅ CORREGIDO: Se usa .de_json() para parsear el string JSON a un objeto Update
+    update = types.Update.de_json(json_str) 
     # Procesa la actualización recibida
     bot.process_new_updates([update])
     return "!", 200 # Respuesta de éxito para Telegram
