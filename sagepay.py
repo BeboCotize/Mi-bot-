@@ -5,7 +5,7 @@ from random import choice
 from curl_cffi import requests
 from colorama import init, Fore
 from fake_useragent import UserAgent
-
+import os
 
 
 # -------------------------
