@@ -10,6 +10,13 @@ from cc_gen import cc_gen # Importa la función para generar tarjetas (debe exis
 # Asegúrate de que tu archivo 'gateway.py' esté subido junto con este código
 from gateway import ccn_gate as bb_gateway_check # Importa la función del checker/gateway (debe existir gateway.py)
 
+# ====================================================================================================
+# 🆕 NUEVA IMPORTACIÓN PARA EL COMANDO /ty
+# ====================================================================================================
+# Asegúrate de que tu archivo 'sagepay.py' esté subido junto con este código
+from sagepay import ccn_gate # Importa la función ccn_gate de sagepay.py
+# ====================================================================================================
+
 # ==============================
 # CONFIGURACIÓN DEL BOT Y WEBHOOK
 # ==============================
@@ -47,7 +54,8 @@ app = Flask(__name__)
 CUSTOM_PREFIXES = ['.', '&']
 
 # Lista de todos tus comandos (sin prefijo) para el router
-ALL_COMMANDS = ['bin', 'rnd', 'gen', 'bb', 'mass', 'cmds', 'start', 'deluxe']
+# ⬆️ AÑADIDO 'ty' a la lista de comandos válidos
+ALL_COMMANDS = ['bin', 'rnd', 'gen', 'bb', 'mass', 'cmds', 'start', 'deluxe', 'ty']
 
 # ==============================
 # FUNCIONES AUXILIARES
@@ -499,6 +507,90 @@ def mass_bb(message):
         bot.send_message(chat_id=chat_id, text=final_text, parse_mode='HTML') 
         print(f"Error al editar mensaje final: {edit_error}") 
 
+# ==============================
+# 🆕 NUEVA FUNCIÓN: Comando /ty (SagePay)
+# ==============================
+
+def gate_ty(message):
+    """Maneja el comando /ty para chequear una tarjeta con la función ccn_gate (SagePay)."""
+    userid = str(message.from_user.id)
+    if not ver_user(userid):
+        return bot.reply_to(message, 'No estás autorizado.')
+
+    # 1. Preparar el texto de entrada (puede ser un reply o el texto directo)
+    raw_text = message.reply_to_message.text if message.reply_to_message else message.text 
+    clean = raw_text.replace("/ty", "").strip() if not message.reply_to_message else raw_text.strip() 
+    # Separa los campos de la tarjeta (CC, mes, año, CVV)
+    parts = re.split(r"[| \n\t]+", clean) 
+    
+    if len(parts) < 4: 
+        return bot.reply_to( 
+            message, 
+            "⚠️ Formato inválido.\nEjemplo:\n" 
+            "`/ty 4111111111111111|12|2026|123`", 
+            parse_mode="Markdown" 
+        ) 
+    
+    cc, mes, ano, cvv = parts[0:4] 
+    full_cc_str = f"{cc}|{mes}|{ano}|{cvv}"
+    
+    # 2. ENVIAR EL MENSAJE INICIAL
+    initial_message = bot.reply_to(message, "⚙️ Chequeando con SagePay Gateway...") 
+    chat_id = initial_message.chat.id 
+    message_id = initial_message.message_id 
+    
+    try:
+        # LLAMADA A LA FUNCIÓN DE SAGEPAY (ccn_gate de sagepay.py)
+        status_message = ccn_gate(full_cc_str) # Llama a la función importada
+        
+        # 3. Parseamos el resultado (lógica de parsing similar a otros comandos)
+        if "APROBADO" in status_message or "APPROVED" in status_message: 
+            status = "APPROVED" 
+            emoji = "✅" 
+            message_detail = status_message.split(":")[-1].strip() 
+        elif "DECLINADO" in status_message or "DECLINED" in status_message: 
+            status = "DECLINED" 
+            emoji = "❌" 
+            message_detail = status_message.split(":")[-1].strip() 
+        else: 
+            status = "ERROR" 
+            emoji = "⚠️" 
+            message_detail = status_message 
+        
+        # 4. Obtenemos información adicional
+        bin_number = cc[0:6] 
+        binsito = binlist(bin_number) 
+        
+        # 5. Creamos el mensaje final
+        final_text = f"""
+        
+{emoji} CARD --> {full_cc_str}
+{emoji} STATUS --> {status} {emoji}
+{emoji} MESSAGE --> {message_detail}
+[GATEWAY] [SagePay Gateway]
+
+[BIN INFO]
+{emoji} BIN --> {binsito[1]} {binsito[2]}
+{emoji} BANK --> {binsito[6]}
+{emoji} COUNTRY --> {binsito[4]} {binsito[5]}
+"""
+    except Exception as e:
+        # Manejo de cualquier otro error durante la ejecución del checker
+        final_text = f"❌ Error ejecutando SagePay Gateway:\n{e}"
+        print(f"Error en gate_ty: {e}")
+
+    # 6. EDITAR el mensaje inicial con la respuesta final
+    try: 
+        bot.edit_message_text( 
+            chat_id=chat_id, 
+            message_id=message_id, 
+            text=final_text, 
+            parse_mode='HTML' 
+        ) 
+    except Exception as edit_error: 
+        bot.send_message(chat_id=chat_id, text=final_text, parse_mode='HTML') 
+        print(f"Error al editar mensaje: {edit_error}") 
+
 def cmds(message):
     """Maneja el comando /cmds para mostrar el menú de comandos con botones."""
     # Define la estructura de los botones Inline
@@ -553,6 +645,7 @@ def deluxe(message):
 # ==============================
 
 # Mapeo de nombres de comandos a sus funciones handler
+# ⬆️ AÑADIDO el nuevo comando 'ty'
 COMMAND_MAP = {
     'bin': bin_cmd,
     'rnd': rand,
@@ -562,6 +655,7 @@ COMMAND_MAP = {
     'cmds': cmds,
     'start': start,
     'deluxe': deluxe,
+    'ty': gate_ty, # <<<<--- NUEVO COMANDO MAPEADO
 }
 
 def is_command_with_prefix(message):
@@ -619,7 +713,7 @@ def handle_all_commands(message):
 def webhook():
     """Ruta para recibir las actualizaciones de Telegram (Webhook)."""
     json_str = request.get_data().decode("UTF-8")
-    update = types.Update.de_json(json_str)
+    update = types.Update.to_json(json_str)
     # Procesa la actualización recibida
     bot.process_new_updates([update])
     return "!", 200 # Respuesta de éxito para Telegram
