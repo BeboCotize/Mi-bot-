@@ -11,14 +11,14 @@ from cc_gen import cc_gen # Importa la función para generar tarjetas (debe exis
 from gateway import ccn_gate as bb_gateway_check # Importa la función del checker/gateway (debe existir gateway.py)
 
 # ====================================================================================================
-# 🆕 NUEVA IMPORTACIÓN PARA EL COMANDO /ty (SAGEPAY)
+# NUEVA IMPORTACIÓN PARA LOS COMANDOS /ty y /massty (SAGEPAY)
 # ====================================================================================================
 # Asegúrate de que tu archivo 'sagepay.py' esté subido junto con este código
 from sagepay import ccn_gate # Importa la función ccn_gate de sagepay.py
 # ====================================================================================================
 
 # ==============================
-# CONFIGURACIÓN DEL BOT Y WEBHOOK
+# CONFIGURACIÓN DEL BOT Y COOLDOWNS
 # ==============================
 
 # Obtiene el Token del bot de las variables de entorno de Railway
@@ -28,19 +28,23 @@ bot = TeleBot(TOKEN, parse_mode='HTML')
 
 # 📌 ID de usuarios autorizados (solo estos IDs pueden usar los comandos)
 USERS = [
-    '6116275760', '8470094114', '1073258864', '7457808814', '5551626715']
+    '6116275760', '8470094114', '1073258864', '7457808814', '5551626715', '7973321076']
 
-# Diccionario para almacenar el último uso del comando /bb por usuario (para evitar spam)
+# Diccionario para almacenar el último uso del comando /bb por usuario
 BB_COOLDOWN = {}
-COOLDOWN_TIME = 20 # Tiempo de espera en segundos para reintentar el comando /bb
+COOLDOWN_TIME = 20 # Tiempo de espera en segundos para /bb
 
 # 🚨 Diccionario para mantenimiento forzado (bloquea el /bb si el gateway falla muchas veces)
 BB_MAINTENANCE = {}
-MAINTENANCE_TIME = 600 # 10 minutos en segundos (10 * 60)
+MAINTENANCE_TIME = 600 # 10 minutos en segundos
 
-# 🚨 Cooldown específico para el comando masivo /mass
+# 🚨 Cooldown específico para el comando masivo /mass bb
 MASS_COOLDOWN = {}
-MASS_COOLDOWN_TIME = 120 # 2 minutos de espera para el comando masivo
+MASS_COOLDOWN_TIME = 120 # 2 minutos de espera para el comando masivo BB
+
+# 🚨 Cooldown específico para el comando /ty (SagePay)
+TY_COOLDOWN = {}
+TY_COOLDOWN_TIME = 40 # 40 segundos de espera para el comando /ty
 
 # 🚨 Cooldown específico para el comando masivo /massty
 MASS_TY_COOLDOWN = {}
@@ -58,7 +62,6 @@ app = Flask(__name__)
 CUSTOM_PREFIXES = ['.', '&']
 
 # Lista de todos tus comandos (sin prefijo) para el router
-# ⬆️ AÑADIDO 'ty' y 'massty'
 ALL_COMMANDS = ['bin', 'rnd', 'gen', 'bb', 'mass', 'cmds', 'start', 'deluxe', 'ty', 'massty']
 
 # ==============================
@@ -120,7 +123,6 @@ def bin_cmd(message):
     if not ver_user(userid):
         return bot.reply_to(message, 'No estás autorizado.')
 
-    # Intenta obtener el BIN del mensaje al que se responde o del texto después del comando
     if message.reply_to_message: 
         search_bin = re.findall(r'[0-9]+', str(message.reply_to_message.text)) 
     else: 
@@ -130,13 +132,12 @@ def bin_cmd(message):
     if not search_bin: 
         return bot.reply_to(message, "Bin no reconocido.") 
     
-    number = search_bin[0][0:6] # Toma solo los primeros 6 dígitos
-    data = binlist(number) # Llama a la función para buscar el BIN
+    number = search_bin[0][0:6]
+    data = binlist(number)
     
     if not data: 
         return bot.reply_to(message, "Bin no encontrado.") 
     
-    # Formato de la respuesta con los datos obtenidos
     texto = f"""
     
     𝗕𝗜𝗡: {data[0]}
@@ -152,11 +153,10 @@ def rand(message):
     if not ver_user(userid):
         return bot.reply_to(message, 'No estás autorizado.')
 
-    data = dir_fake() # Llama a la función para generar la dirección
+    data = dir_fake()
     if not data: 
         return bot.reply_to(message, '⚠️ Error obteniendo dirección.') 
     
-    # Formato de la respuesta con los datos aleatorios
     texto = f"""
     
     👤 {data['first_name']} {data['last_name']}
@@ -173,14 +173,12 @@ def gen(message):
     if not ver_user(userid):
         return bot.reply_to(message, 'No estás autorizado.')
 
-    # Extrae el texto después del comando para buscar el formato CC|MM|YYYY|CVV
     text_after_command = " ".join(message.text.split()[1:]) 
-    inputcc = re.findall(r'[0-9x]+', text_after_command) # Busca secuencias de números y 'x'
+    inputcc = re.findall(r'[0-9x]+', text_after_command)
     
     if not inputcc: 
         return bot.reply_to(message, "Formato incorrecto.") 
     
-    # Asigna las partes de la CC, usando valores por defecto si no se encuentran
     cc = inputcc[0] 
     mes = inputcc[1][0:2] if len(inputcc) > 1 else "xx" 
     ano = inputcc[2] if len(inputcc) > 2 else "xxxx" 
@@ -190,16 +188,14 @@ def gen(message):
         return bot.reply_to(message, "CC incompleta.") 
     
     bin_number = cc[0:6] 
-    card = cc_gen(cc, mes, ano, cvv) # Llama a la función de generación de CCs
+    card = cc_gen(cc, mes, ano, cvv)
     
     if not card: 
         return bot.reply_to(message, "Error al generar.") 
     
-    binsito = binlist(bin_number) # Obtiene info del BIN
-    # Formatea las CCs generadas, usando <code> para que se vean como código
+    binsito = binlist(bin_number)
     cards_text = "\n".join([f"<code>{c.strip()}</code>" for c in card]) 
     
-    # Formato de la respuesta final
     text = f"""
     
     🔹 GENERADOR 🔹
@@ -222,7 +218,7 @@ def gate_bb(message):
 
     current_time = time.time() 
     
-    # 🚨 LÓGICA DE MANTENIMIENTO FORZADO 🚨 (Revisa si el usuario está bloqueado por muchos fallos)
+    # 🚨 LÓGICA DE MANTENIMIENTO FORZADO 🚨
     if userid in BB_MAINTENANCE and current_time < BB_MAINTENANCE[userid]: 
         remaining = int(BB_MAINTENANCE[userid] - current_time) 
         minutes = remaining // 60 
@@ -232,7 +228,7 @@ def gate_bb(message):
             f"🛠️ Comando /bb en mantenimiento forzado (Max Retries). Por favor, espera {minutes} minutos y {seconds} segundos." 
         ) 
     
-    # === LÓGICA DE COOLDOWN (SPAM-LOCK) === (Revisa si ha pasado el tiempo de espera)
+    # === LÓGICA DE COOLDOWN (SPAM-LOCK) ===
     if userid in BB_COOLDOWN: 
         time_elapsed = current_time - BB_COOLDOWN[userid] 
         if time_elapsed < COOLDOWN_TIME: 
@@ -242,13 +238,14 @@ def gate_bb(message):
                 f"🚫 ¡Alto ahí! Debes esperar {remaining} segundos antes de volver a usar /bb." 
             ) 
     
-    # 1. Preparar el texto de entrada (puede ser un reply o el texto directo)
+    # 1. Preparar el texto de entrada
     raw_text = message.reply_to_message.text if message.reply_to_message else message.text 
     clean = raw_text.replace("/bb", "").strip() if not message.reply_to_message else raw_text.strip() 
-    # Separa los campos de la tarjeta (CC, mes, año, CVV)
     parts = re.split(r"[| \n\t]+", clean) 
     
     if len(parts) < 4: 
+        # Actualizar cooldown si el formato es inválido, para evitar penalizar al usuario
+        BB_COOLDOWN[userid] = time.time()
         return bot.reply_to( 
             message, 
             "⚠️ Formato inválido.\nEjemplo:\n" 
@@ -258,16 +255,16 @@ def gate_bb(message):
     
     cc, mes, ano, cvv = parts[0:4] 
     
-    # 2. ENVIAR EL MENSAJE INICIAL Y CAPTURAR SU ID (para editarlo después)
+    # 2. ENVIAR EL MENSAJE INICIAL Y CAPTURAR SU ID
     initial_message = bot.reply_to(message, "⚙️ Chequeando con BB Gateway...") 
     chat_id = initial_message.chat.id 
     message_id = initial_message.message_id 
     
     try:
-        # LLAMADA A TU GATEWAY MODIFICADO (función importada de gateway.py) 
+        # LLAMADA A TU GATEWAY MODIFICADO
         status_message = bb_gateway_check(f"{cc}|{mes}|{ano}|{cvv}") 
         
-        # 3. Parseamos el resultado para el formato final 
+        # 3. Parseamos el resultado
         if "APROBADO" in status_message or "APPROVED" in status_message: 
             status = "APPROVED" 
             emoji = "✅" 
@@ -280,19 +277,18 @@ def gate_bb(message):
             status = "ERROR" 
             emoji = "⚠️" 
             
-            # 🚨 GESTIÓN DE ERROR Y MANTENIMIENTO (si el gateway devuelve "Max Retries")
+            # 🚨 GESTIÓN DE ERROR Y MANTENIMIENTO
             if "Max Retries" in status_message: 
                 message_detail = "Fallo de conexión o límite de intentos. Comando bloqueado por 10 min." 
-                # ACTIVAR MANTENIMIENTO FORZADO POR 10 MINUTOS 
                 BB_MAINTENANCE[userid] = time.time() + MAINTENANCE_TIME 
             else: 
                 message_detail = status_message 
         
-        # 4. Obtenemos información adicional para el formato 
+        # 4. Obtenemos información adicional para el formato
         bin_number = cc[0:6] 
         binsito = binlist(bin_number) 
         
-        # 5. Creamos el mensaje final con el formato deseado 
+        # 5. Creamos el mensaje final
         final_text = f"""
         
         {emoji} CARD --> {cc}|{mes}|{ano}|{cvv}
@@ -306,11 +302,10 @@ def gate_bb(message):
         {emoji} COUNTRY --> {binsito[4]} {binsito[5]}
         """
     except Exception as e:
-        # Manejo de cualquier otro error durante la ejecución del checker
         final_text = f"❌ Error ejecutando BB Gateway:\n{e}"
         print(f"Error en gate_bb: {e}")
 
-    # === ACTUALIZAR EL COOLDOWN (SOLO SI EL CHECK SE EJECUTÓ) === 
+    # === ACTUALIZAR EL COOLDOWN === 
     BB_COOLDOWN[userid] = time.time() 
     
     # 6. EDITAR el mensaje inicial con la respuesta final (Live Editing)
@@ -322,7 +317,6 @@ def gate_bb(message):
             parse_mode='HTML' 
         ) 
     except Exception as edit_error: 
-        # Si falla la edición, envía la respuesta como un mensaje nuevo
         bot.send_message(chat_id=chat_id, text=final_text, parse_mode='HTML') 
         print(f"Error al editar mensaje: {edit_error}") 
 
@@ -334,7 +328,7 @@ def mass_bb(message):
 
     current_time = time.time() 
     
-    # 🚨 LÓGICA DE MANTENIMIENTO FORZADO (Chequeo compartido con /bb) 🚨 
+    # 🚨 LÓGICA DE MANTENIMIENTO FORZADO 🚨
     if userid in BB_MAINTENANCE and current_time < BB_MAINTENANCE[userid]: 
         remaining = int(BB_MAINTENANCE[userid] - current_time) 
         minutes = remaining // 60 
@@ -354,25 +348,23 @@ def mass_bb(message):
                 f"🚫 ¡Calma! Debes esperar {remaining} segundos antes de volver a usar .mass bb." 
             ) 
     
-    # 1. Extraer el texto de las CCs (del reply o del mensaje directo)
+    # 1. Extraer el texto de las CCs
     raw_text = message.reply_to_message.text if message.reply_to_message else message.text 
     clean = raw_text.replace("/mass", "").strip() if not message.reply_to_message else raw_text.strip() 
-    
-    # Dividir el texto para encontrar las tarjetas (separadas por línea, espacio o barra) 
     cc_lines = re.split(r'[\n\s]+', clean) 
     
     # 2. Parsear y validar las tarjetas
     cards_to_check = [] 
-    # Patrón para encontrar tarjetas en formato CC|MM|YYYY|CVV
     cc_pattern = re.compile(r'(\d{12,16})[|](\d{1,2})[|](\d{2,4})[|](\d{3,4})') 
     
     for line in cc_lines: 
         match = cc_pattern.search(line) 
-        if match and len(cards_to_check) < 10: # Limita el chequeo masivo a 10 tarjetas 
+        if match and len(cards_to_check) < 10:
             cc, mes, ano, cvv = match.groups() 
             cards_to_check.append(f"{cc}|{mes}|{ano}|{cvv}") 
     
     if not cards_to_check: 
+        MASS_COOLDOWN[userid] = time.time()
         return bot.reply_to( 
             message, 
             "⚠️ Formato inválido o tarjetas no detectadas. Asegúrate de usar el formato:\n" 
@@ -382,40 +374,45 @@ def mass_bb(message):
     
     total_cards = len(cards_to_check) 
     
-    # 3. ENVIAR MENSAJE INICIAL (para luego editarlo y mostrar el progreso)
+    # 3. ENVIAR MENSAJE INICIAL
     initial_message = bot.reply_to( 
         message, 
         f"⚙️ Iniciando chequeo masivo de {total_cards} tarjetas con BB Gateway..." 
     ) 
     chat_id = initial_message.chat.id 
     message_id = initial_message.message_id 
-    results = [] # Lista para guardar los resultados de cada tarjeta
-    maintenance_triggered = False # Flag para saber si se activó el mantenimiento
+    results = []
+    maintenance_triggered = False
     
     # 4. Procesar cada tarjeta con LIVE EDITING 
     for i, full_cc in enumerate(cards_to_check, 1): 
         cc, mes, ano, cvv = full_cc.split('|') 
         
-        # 4.1. Mensaje base de progreso 
-        progress_msg_base = f"⚙️ Chequeando Tarjeta {i}/{total_cards}: <code>{full_cc}</code>" 
-        
-        # 4.2. Intentar editar el mensaje antes del check para mostrar la CC actual 
+        # 4.1. Intentar editar el mensaje antes del check para mostrar la CC actual 
         try: 
+            current_result_text = "\n".join(results) 
+            progress_text = f"""
+            
+🔹 CHEQUEO MASIVO BB GATEWAY 🔹
+━━━━━━━━━━━━━━━
+🌐 PROGRESO: {i}/{total_cards}
+💳 TARJETA: <code>{full_cc}</code>
+━━━━━━━━━━━━━━━
+**Resultados Previos:**
+{current_result_text}"""
+            
             bot.edit_message_text( 
                 chat_id=chat_id, 
                 message_id=message_id, 
-                # Muestra el progreso y los resultados acumulados
-                text=f"{progress_msg_base}\n\n**Resultados Chequeados:**\n{chr(10).join(results)}", 
+                text=progress_text, 
                 parse_mode='HTML' 
             ) 
         except: 
-            pass # Ignorar errores de edición si ocurren 
+            pass
         
         try: 
-            # Llama al Gateway para chequear la CC
             status_message = bb_gateway_check(full_cc) 
             
-            # Lógica para determinar el status y el mensaje
             if "APROBADO" in status_message or "APPROVED" in status_message: 
                 status_emoji = "✅" 
                 status_bold = "APROBADA" 
@@ -430,14 +427,13 @@ def mass_bb(message):
                 
                 if "Max Retries" in status_message: 
                     message_detail = "Fallo de conexión. Bloqueo activado." 
-                    maintenance_triggered = True # Activa el flag de mantenimiento
+                    maintenance_triggered = True
                 else: 
                     message_detail = status_message 
             
             bin_number = cc[0:6] 
             binsito = binlist(bin_number) 
             
-            # --- Formato PRO mejorado para cada resultado --- 
             result_line = f"""
             
 {status_emoji} STATUS: {status_bold}
@@ -449,33 +445,10 @@ def mass_bb(message):
             
             results.append(result_line) 
             
-            # 4.3. Editar el mensaje con el resultado acumulado de la CC recién chequeada 
-            current_result_text = "\n".join(results) 
-            progress_text = f"""
-            
-🔹 CHEQUEO MASIVO BB GATEWAY 🔹
-━━━━━━━━━━━━━━━
-🌐 PROGRESO: {i}/{total_cards}
-━━━━━━━━━━━━━━━
-{current_result_text}
-"""
-            try:
-                bot.edit_message_text(
-                    chat_id=chat_id,
-                    message_id=message_id,
-                    text=progress_text,
-                    parse_mode='HTML'
-                )
-            except Exception as edit_error:
-                # Si falla la edición, ignorar y continuar
-                print(f"Error al editar mensaje de progreso: {edit_error}")
-
-            # Si se activa el mantenimiento, salimos del bucle para no seguir chequeando
             if maintenance_triggered: 
                 break 
         
         except Exception as e: 
-            # Manejo de excepciones durante el chequeo de la CC
             error_line = f"💳 <code>{full_cc}</code> | ❌ ERROR (Excepción: {str(e)})" 
             results.append(error_line) 
             print(f"Error en mass_bb para {full_cc}: {e}") 
@@ -507,12 +480,11 @@ def mass_bb(message):
             parse_mode='HTML' 
         ) 
     except Exception as edit_error: 
-        # Si la edición final falla, envía uno nuevo como respaldo. 
         bot.send_message(chat_id=chat_id, text=final_text, parse_mode='HTML') 
         print(f"Error al editar mensaje final: {edit_error}") 
 
 # ==============================
-# 🆕 NUEVA FUNCIÓN: Comando /ty (SagePay)
+# COMANDO /ty (SagePay) - CON COOLDOWN DE 40s
 # ==============================
 
 def gate_ty(message):
@@ -521,13 +493,26 @@ def gate_ty(message):
     if not ver_user(userid):
         return bot.reply_to(message, 'No estás autorizado.')
 
-    # 1. Preparar el texto de entrada (puede ser un reply o el texto directo)
+    current_time = time.time() 
+    
+    # === LÓGICA DE COOLDOWN (SPAM-LOCK) === 
+    if userid in TY_COOLDOWN: 
+        time_elapsed = current_time - TY_COOLDOWN[userid] 
+        if time_elapsed < TY_COOLDOWN_TIME: 
+            remaining = int(TY_COOLDOWN_TIME - time_elapsed) 
+            return bot.reply_to( 
+                message, 
+                f"🚫 ¡Alto ahí! Debes esperar {remaining} segundos antes de volver a usar /ty." 
+            ) 
+
+    # 1. Preparar el texto de entrada
     raw_text = message.reply_to_message.text if message.reply_to_message else message.text 
     clean = raw_text.replace("/ty", "").strip() if not message.reply_to_message else raw_text.strip() 
-    # Separa los campos de la tarjeta (CC, mes, año, CVV)
     parts = re.split(r"[| \n\t]+", clean) 
     
     if len(parts) < 4: 
+        # Actualizar cooldown si el formato es inválido, para no penalizar al usuario
+        TY_COOLDOWN[userid] = time.time() 
         return bot.reply_to( 
             message, 
             "⚠️ Formato inválido.\nEjemplo:\n" 
@@ -545,17 +530,14 @@ def gate_ty(message):
     
     try:
         # LLAMADA A LA FUNCIÓN DE SAGEPAY (ccn_gate de sagepay.py)
-        # ccn_gate devuelve: STATUS|MESSAGE|CODE|
         raw_output = ccn_gate(full_cc_str) # Llama a la función importada
         
-        # 3. Parseamos el resultado (CORRECCIÓN CRÍTICA AQUÍ)
+        # 3. Parseamos el resultado
         output_parts = raw_output.strip().split('|')
 
-        # Se espera: [STATUS, MESSAGE, CODE, ''] -> 4 partes
         if len(output_parts) >= 3:
             status = output_parts[0].strip()
             message_detail = output_parts[1].strip()
-            # code = output_parts[2].strip() # Opcionalmente puedes usar el código
 
             emoji = "⚠️"
             if "APPROVED" in status:
@@ -574,11 +556,9 @@ def gate_ty(message):
                 status_text = status
 
         else:
-            # Fallback si el formato no es el esperado
             status_text = "ERROR"
             emoji = "⚠️"
             message_detail = f"Formato de respuesta inválido: {raw_output}"
-
         
         # 4. Obtenemos información adicional
         bin_number = cc[0:6] 
@@ -598,11 +578,13 @@ def gate_ty(message):
 {emoji} COUNTRY --> {binsito[4]} {binsito[5]}
 """
     except Exception as e:
-        # Manejo de cualquier otro error durante la ejecución del checker
         final_text = f"❌ Error ejecutando SagePay Gateway:\n{e}"
         print(f"Error en gate_ty: {e}")
 
-    # 6. EDITAR el mensaje inicial con la respuesta final
+    # 6. ACTUALIZAR EL COOLDOWN
+    TY_COOLDOWN[userid] = time.time()
+    
+    # 7. EDITAR el mensaje inicial con la respuesta final
     try: 
         bot.edit_message_text( 
             chat_id=chat_id, 
@@ -615,7 +597,7 @@ def gate_ty(message):
         print(f"Error al editar mensaje: {edit_error}") 
 
 # ==============================
-# 🆕 NUEVA FUNCIÓN: Comando /massty (SagePay Mass)
+# COMANDO /massty (SagePay Mass)
 # ==============================
 
 def mass_ty(message):
@@ -636,25 +618,23 @@ def mass_ty(message):
                 f"🚫 ¡Calma! Debes esperar {remaining} segundos antes de volver a usar /massty." 
             ) 
     
-    # 1. Extraer el texto de las CCs (del reply o del mensaje directo)
+    # 1. Extraer el texto de las CCs
     raw_text = message.reply_to_message.text if message.reply_to_message else message.text 
     clean = raw_text.replace("/massty", "").strip() if not message.reply_to_message else raw_text.strip() 
-    
-    # Dividir el texto para encontrar las tarjetas (separadas por línea, espacio o barra) 
     cc_lines = re.split(r'[\n\s]+', clean) 
     
     # 2. Parsear y validar las tarjetas
     cards_to_check = [] 
-    # Patrón para encontrar tarjetas en formato CC|MM|YYYY|CVV
     cc_pattern = re.compile(r'(\d{12,16})[|](\d{1,2})[|](\d{2,4})[|](\d{3,4})') 
     
     for line in cc_lines: 
         match = cc_pattern.search(line) 
-        if match and len(cards_to_check) < 10: # Limita el chequeo masivo a 10 tarjetas 
+        if match and len(cards_to_check) < 10:
             cc, mes, ano, cvv = match.groups() 
             cards_to_check.append(f"{cc}|{mes}|{ano}|{cvv}") 
     
     if not cards_to_check: 
+        MASS_TY_COOLDOWN[userid] = time.time()
         return bot.reply_to( 
             message, 
             "⚠️ Formato inválido o tarjetas no detectadas. Asegúrate de usar el formato:\n" 
@@ -664,22 +644,23 @@ def mass_ty(message):
     
     total_cards = len(cards_to_check) 
     
-    # 3. ENVIAR MENSAJE INICIAL (para luego editarlo y mostrar el progreso)
+    # 3. ENVIAR MENSAJE INICIAL
     initial_message = bot.reply_to( 
         message, 
         f"⚙️ Iniciando chequeo masivo de {total_cards} tarjetas con SagePay Gateway..." 
     ) 
     chat_id = initial_message.chat.id 
     message_id = initial_message.message_id 
-    results = [] # Lista para guardar los resultados de cada tarjeta
+    results = []
     
     # 4. Procesar cada tarjeta con LIVE EDITING 
     for i, full_cc in enumerate(cards_to_check, 1): 
         cc, mes, ano, cvv = full_cc.split('|') 
         
-        # 4.1. Mensaje base de progreso 
-        current_result_text = "\n".join(results) 
-        progress_text = f"""
+        # 4.1. Intentar editar el mensaje antes del check para mostrar la CC actual 
+        try: 
+            current_result_text = "\n".join(results) 
+            progress_text = f"""
             
 🔹 CHEQUEO MASIVO SAGEPAY GATEWAY 🔹
 ━━━━━━━━━━━━━━━
@@ -688,9 +669,7 @@ def mass_ty(message):
 ━━━━━━━━━━━━━━━
 **Resultados Previos:**
 {current_result_text}"""
-        
-        # 4.2. Intentar editar el mensaje antes del check para mostrar la CC actual 
-        try: 
+            
             bot.edit_message_text( 
                 chat_id=chat_id, 
                 message_id=message_id, 
@@ -698,7 +677,7 @@ def mass_ty(message):
                 parse_mode='HTML' 
             ) 
         except: 
-            pass # Ignorar errores de edición si ocurren 
+            pass
         
         try: 
             # Llama al Gateway para chequear la CC (SagePay)
@@ -741,10 +720,9 @@ def mass_ty(message):
             
             results.append(result_line) 
             
-            time.sleep(1) # Pequeña pausa para evitar sobrecarga y errores de edición
+            time.sleep(1) # Pequeña pausa
         
         except Exception as e: 
-            # Manejo de excepciones durante el chequeo de la CC
             error_line = f"💳 <code>{full_cc}</code> | ❌ ERROR (Excepción: {str(e)})" 
             results.append(error_line) 
             print(f"Error en mass_ty para {full_cc}: {e}") 
@@ -771,13 +749,11 @@ def mass_ty(message):
             parse_mode='HTML' 
         ) 
     except Exception as edit_error: 
-        # Si la edición final falla, envía uno nuevo como respaldo. 
         bot.send_message(chat_id=chat_id, text=final_text, parse_mode='HTML') 
         print(f"Error al editar mensaje final: {edit_error}") 
 
 def cmds(message):
     """Maneja el comando /cmds para mostrar el menú de comandos con botones."""
-    # Define la estructura de los botones Inline
     buttons_cmds = [
         [
             types.InlineKeyboardButton('Gateways', callback_data='gates'),
@@ -788,10 +764,9 @@ def cmds(message):
     markup_buttom = types.InlineKeyboardMarkup(buttons_cmds)
     text = "📋 Lista de comandos"
 
-    # Envía un mensaje con una foto y el menú de botones
     bot.send_photo( 
         chat_id=message.chat.id, 
-        photo=IMG_PHOTO1, # Usa el FILE_ID de la foto
+        photo=IMG_PHOTO1,
         caption=text, 
         reply_to_message_id=message.id, 
         reply_markup=markup_buttom 
@@ -805,8 +780,7 @@ def start(message):
     • Info: /Deluxe
     🚸 @DuluxeChk
     """
-    # Envía un mensaje con una foto
-    bot.send_photo(chat_id=message.chat.id, photo=IMG_PHOTO2, caption=text) # Usa el FILE_ID
+    bot.send_photo(chat_id=message.chat.id, photo=IMG_PHOTO2, caption=text)
 
 def deluxe(message):
     """Maneja el comando /deluxe para mostrar términos o información."""
@@ -821,26 +795,24 @@ def deluxe(message):
 
     Robo de gates = ban
     """
-    # Envía un mensaje con una foto
-    bot.send_photo(chat_id=message.chat.id, photo=IMG_PHOTO1, caption=text) # Usa el FILE_ID
+    bot.send_photo(chat_id=message.chat.id, photo=IMG_PHOTO1, caption=text)
 
 # ==============================
 # ROUTER DE COMANDOS CON PREFIJOS
 # ==============================
 
 # Mapeo de nombres de comandos a sus funciones handler
-# ⬆️ AÑADIDO 'ty' y 'massty'
 COMMAND_MAP = {
     'bin': bin_cmd,
     'rnd': rand,
     'gen': gen,
     'bb': gate_bb,
-    'mass': mass_bb, # Comando masivo BB
+    'mass': mass_bb, 
     'cmds': cmds,
     'start': start,
     'deluxe': deluxe,
     'ty': gate_ty, 
-    'massty': mass_ty, # <<<<--- NUEVO COMANDO MAPEADO
+    'massty': mass_ty,
 }
 
 def is_command_with_prefix(message):
@@ -853,14 +825,14 @@ def is_command_with_prefix(message):
         return False 
     
     first_word = parts[0].lower() 
-    prefixes = ['/'] + CUSTOM_PREFIXES # Lista de prefijos válidos
+    prefixes = ['/'] + CUSTOM_PREFIXES
     
     for prefix in prefixes: 
         if first_word.startswith(prefix): 
             command = first_word[len(prefix):] 
             if '@' in command: 
-                command = command.split('@')[0] # Elimina el nombre del bot si está (ej: /bin@BotName)
-            return command in ALL_COMMANDS # Verifica si el comando está en la lista de comandos
+                command = command.split('@')[0]
+            return command in ALL_COMMANDS
     
     return False 
 
@@ -874,7 +846,6 @@ def handle_all_commands(message):
     command_name = "" 
     prefixes = ['/'] + CUSTOM_PREFIXES 
     
-    # Extrae el nombre del comando quitando el prefijo
     for prefix in prefixes: 
         if command_with_prefix.startswith(prefix): 
             command_name = command_with_prefix[len(prefix):] 
@@ -883,12 +854,100 @@ def handle_all_commands(message):
             break 
     
     if command_name in COMMAND_MAP: 
-        # Modifica el mensaje para que el handler interno lo reciba como un comando normal (/comando ...)
+        # Modifica el mensaje para que el handler interno lo reciba como un comando normal
         new_text_parts = [f"/{command_name}"] 
         if len(text_parts) > 1: 
             new_text_parts.extend(text_parts[1:]) 
         message.text = " ".join(new_text_parts) 
-        COMMAND_MAP[command_name](message) # Llama a la función handler mapeada
+        COMMAND_MAP[command_name](message)
+
+# ==============================
+# HANDLER DE INLINE KEYBOARD (Callback Queries)
+# ==============================
+
+@bot.callback_query_handler(func=lambda call: True)
+def callback_query_handler(call):
+    """Maneja las interacciones con los botones Inline del menú /cmds."""
+    chat_id = call.message.chat.id
+    message_id = call.message.message_id
+    data = call.data
+
+    if data == 'close':
+        try:
+            bot.delete_message(chat_id, message_id)
+        except:
+            pass
+        
+    elif data == 'gates':
+        text_gates = """
+        💳 𝗚𝗔𝗧𝗘𝗪𝗔𝗬𝗦 𝗔𝗖𝗧𝗜𝗩𝗢𝗦 💳
+        
+        • `/bb` - Chequeador BB Gateway (Cooldown 20s)
+        • `/ty` - Chequeador SagePay Gateway (Cooldown 40s)
+        • `/mass` - Chequeador masivo BB (Max 10 CCs, Cooldown 120s)
+        • `/massty` - Chequeador masivo SagePay (Nuevo, Max 10 CCs, Cooldown 120s)
+        
+        🚨 Nota: Usa el formato `CC|MM|YYYY|CVV`
+        """
+        buttons = [[types.InlineKeyboardButton('🔙 Volver', callback_data='start_menu')]]
+        markup = types.InlineKeyboardMarkup(buttons)
+        
+        try:
+            bot.edit_message_caption(
+                chat_id=chat_id, 
+                message_id=message_id, 
+                caption=text_gates, 
+                reply_markup=markup,
+                parse_mode='HTML'
+            )
+        except Exception as e:
+            print(f"Error al editar mensaje de Gateways: {e}")
+
+    elif data == 'tools':
+        text_tools = """
+        🛠️ 𝗛𝗘𝗥𝗥𝗔𝗠𝗜𝗘𝗡𝗧𝗔𝗦 🛠️
+        
+        • `/bin` - Info de un BIN (Primeros 6 dígitos de la CC)
+        • `/gen` - Generador de CCs con formato (Ej: `/gen 4111xxxxxxxxx|xx|xxxx|rnd`)
+        • `/rnd` - Generador de direcciones falsas
+        """
+        buttons = [[types.InlineKeyboardButton('🔙 Volver', callback_data='start_menu')]]
+        markup = types.InlineKeyboardMarkup(buttons)
+        
+        try:
+            bot.edit_message_caption(
+                chat_id=chat_id, 
+                message_id=message_id, 
+                caption=text_tools, 
+                reply_markup=markup,
+                parse_mode='HTML'
+            )
+        except Exception as e:
+            print(f"Error al editar mensaje de Herramientas: {e}")
+            
+    elif data == 'start_menu':
+        text = "📋 Lista de comandos"
+        buttons_cmds = [
+            [
+                types.InlineKeyboardButton('Gateways', callback_data='gates'),
+                types.InlineKeyboardButton('Herramientas', callback_data='tools')
+            ],
+            [types.InlineKeyboardButton('Cerrar', callback_data='close')]
+        ]
+        markup_buttom = types.InlineKeyboardMarkup(buttons_cmds)
+        
+        try:
+            bot.edit_message_caption(
+                chat_id=chat_id, 
+                message_id=message_id, 
+                caption=text, 
+                reply_markup=markup_buttom,
+                parse_mode='HTML'
+            )
+        except Exception as e:
+            print(f"Error al editar mensaje a start_menu: {e}")
+            
+    bot.answer_callback_query(call.id)
 
 # ==============================
 # WEBHOOK CONFIG (Ejecución en Railway)
@@ -898,26 +957,18 @@ def handle_all_commands(message):
 def webhook():
     """Ruta para recibir las actualizaciones de Telegram (Webhook)."""
     json_str = request.get_data().decode("UTF-8")
-    # ✅ CORREGIDO: Se usa .de_json() para parsear el string JSON a un objeto Update
     update = types.Update.de_json(json_str) 
-    # Procesa la actualización recibida
     bot.process_new_updates([update])
-    return "!", 200 # Respuesta de éxito para Telegram
+    return "!", 200
 
 if __name__ == "__main__":
     """Punto de entrada principal para ejecutar la aplicación."""
-    # Obtiene el puerto asignado por Railway (por defecto 5000)
     PORT = int(os.getenv("PORT", 5000))
-    # Obtiene la URL de la aplicación en Railway
     APP_URL = os.getenv("APP_URL")
 
     if not APP_URL: 
-        # **⚠️ Este es un error común. Asegúrate de definir APP_URL en tus variables de Railway ⚠️**
         raise ValueError("APP_URL no está definida en Railway Variables") 
         
-    # 1. Elimina cualquier Webhook anterior
     bot.remove_webhook() 
-    # 2. Configura el nuevo Webhook (Telegram enviará las actualizaciones a esta URL)
     bot.set_webhook(url=f"{APP_URL}/{TOKEN}") 
-    # 3. Inicia el servidor Flask para escuchar en el puerto y host definidos
     app.run(host="0.0.0.0", port=PORT)
