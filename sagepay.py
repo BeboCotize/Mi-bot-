@@ -7,6 +7,31 @@ from colorama import init, Fore
 from fake_useragent import UserAgent
 
 
+# -------------------------
+# CONFIGURACIÓN DEL PROXY
+# -------------------------
+# Puedes mantener las credenciales en variables de entorno (recomendado) o usar las literales abajo.
+# Ejemplo (recomendado): export PROXY_LOGIN=... ; export PROXY_PASSWORD=... antes de ejecutar el script.
+proxy_login = os.environ.get('PROXY_LOGIN', '6c87cc76d68ca38831bf')
+proxy_password = os.environ.get('PROXY_PASSWORD', '918d291b0f3847af')
+proxy_host = os.environ.get('PROXY_HOST', 'gw.dataimpulse.com')
+proxy_port = os.environ.get('PROXY_PORT', '823')
+
+proxy_url_auth = f'http://{proxy_login}:{proxy_password}@{proxy_host}:{proxy_port}'
+proxies = {
+    "http": proxy_url_auth,
+    "https": proxy_url_auth,
+}
+# -------------------------
+
+
+
+
+
+
+
+
+
 def usuario() -> dict:
     number = random.randint(1111, 9999)
     postal = random.choice(['10080', '14925', '71601', '86556', '19980'])
