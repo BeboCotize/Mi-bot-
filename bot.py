@@ -1,7 +1,7 @@
 # Importar módulos necesarios
 import os # Para acceder a las variables de entorno (como el Token del bot)
 import re # Para expresiones regulares (buscar patrones de números/CCs en el texto)
-import requests # Para hacer peticiones HTTP (consultar BINs y generar direcciones falsas) 
+import requests # Para hacer peticiones HTTP (consultar BINs y generar direcciones falsas)  
 import time # Para gestionar los tiempos de espera (cooldowns)
 from flask import Flask, request # Para configurar el servidor web (Webhook de Telegram)
 from telebot import TeleBot, types # Librería principal de Telegram (pyTelegramBotAPI)
