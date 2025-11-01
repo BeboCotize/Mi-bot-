@@ -25,7 +25,7 @@ bot = TeleBot(TOKEN, parse_mode='HTML')
 
 # 📌 ID de usuarios autorizados (solo estos IDs pueden usar los comandos)
 USERS = [
-    '6116275760', '5147213203', '7664193209', '8269796936']
+    '6116275760', '5147213203', '8269796936']
 
 # ❌ La configuración de GAY_COOLDOWN y GAY_COOLDOWN_TIME fue eliminada previamente.
 
