@@ -201,38 +201,37 @@ def gate_gay(message):
         # LLAMADA A LA FUNCIÓN CORREGIDA
         status_message = gay_gateway_check(full_cc)
         
-        # 3. Parseamos el resultado (ADAPTA ESTA LÓGICA SI TU FUNCIÓN DEVUELVE OTRA COSA)
+        # 3. Parseamos el resultado y ajustamos emojis/estados
         if "APROBADO" in status_message or "APPROVED" in status_message: 
             status = "APPROVED" 
             emoji = "✅" 
-            # Intentamos obtener el detalle del mensaje si existe ':'
-            message_detail = status_message.split(":")[-1].strip() if ":" in status_message else status_message
         elif "DECLINADO" in status_message or "DECLINED" in status_message: 
             status = "DECLINED" 
             emoji = "❌" 
-            message_detail = status_message.split(":")[-1].strip() if ":" in status_message else status_message
         else: 
             status = "ERROR" 
             emoji = "⚠️" 
-            message_detail = status_message
+            
+        # Intentamos obtener el detalle del mensaje si existe ':'
+        message_detail = status_message.split(":")[-1].strip() if ":" in status_message else status_message
         
         # 4. Obtenemos información adicional para el formato
         bin_number = cc[0:6] 
         binsito = binlist(bin_number) 
         
-        # 5. Creamos el mensaje final
+        # 5. Creamos el mensaje final con formato limpio y estructurado (¡El cambio clave!)
         final_text = f"""
-        
-        {emoji} CARD --> {full_cc}
-        {emoji} STATUS --> {status} {emoji}
-        {emoji} MESSAGE --> {message_detail}
-        [GATEWAY] [GAY Gateway]
-        
-        [BIN INFO]
-        {emoji} BIN --> {binsito[1] if binsito else 'Desconocido'} {binsito[2] if binsito else ''}
-        {emoji} BANK --> {binsito[6] if binsito else 'Desconocido'}
-        {emoji} COUNTRY --> {binsito[4] if binsito else 'Desconocido'} {binsito[5] if binsito else ''}
-        """
+{emoji} CARD --> <code>{full_cc}</code>
+{emoji} STATUS --> {status} {emoji}
+{emoji} MESSAGE --> {message_detail}
+[GATEWAY] [GAY Gateway]
+
+[BIN INFO]
+{emoji} BIN --> {binsito[1] if binsito else 'Desconocido'} {binsito[2] if binsito else ''} - {binsito[3] if binsito else ''}
+{emoji} BANK --> {binsito[6] if binsito else 'Desconocido'}
+{emoji} COUNTRY --> {binsito[4] if binsito else 'Desconocido'} {binsito[5] if binsito else ''}
+""" # Nota: Se eliminan los saltos de línea extra al inicio para que no haya espacio vacío.
+    
     except Exception as e:
         final_text = f"❌ Error ejecutando GAY Gateway:\n{e}"
         print(f"Error en gate_gay: {e}")
@@ -249,6 +248,7 @@ def gate_gay(message):
             parse_mode='HTML' 
         ) 
     except Exception as edit_error: 
+        # Si la edición falla (ej. mensaje demasiado viejo), envía uno nuevo.
         bot.send_message(chat_id=chat_id, text=final_text, parse_mode='HTML') 
         print(f"Error al editar mensaje: {edit_error}") 
 
@@ -259,18 +259,16 @@ def gate_gay(message):
 # Manejador genérico para comandos con prefijos personalizados ('.', '&')
 @bot.message_handler(func=lambda message: any(message.text.startswith(prefix) for prefix in CUSTOM_PREFIXES))
 def handle_custom_prefix_commands(message):
-    text = message.text[1:]  # Elimina el prefijo
+    text = message.text[1:]
     parts = text.split()
     if not parts:
         return
     
     command = parts[0]
     
-    # Crea un objeto mensaje temporal para simular un comando /
     new_message = message
     new_message.text = f'/{command} {" ".join(parts[1:])}'
     
-    # Llama a la función de manejo correspondiente
     if command == 'bin':
         bin_cmd(new_message)
     elif command == 'gen':
@@ -318,4 +316,3 @@ if __name__ == "__main__":
 
     # 3. Iniciar el servidor Flask
     app.run(host="0.0.0.0", port=PORT)
-
