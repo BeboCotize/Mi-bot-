@@ -11,7 +11,7 @@ from cc_gen import cc_gen # Importa la función para generar tarjetas (DEBE exis
 # IMPORTACIÓN DEL GATEWAY /gay
 # ====================================================================================================
 # 📌 Asegúrate de que tu archivo 'gay.py' esté subido y que contenga la función 'check_gay'
-from gay import cc_gate
+from gay import ccn_gate
 # ====================================================================================================
 
 # ==============================
