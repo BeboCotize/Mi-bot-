@@ -2,47 +2,36 @@
 import os 
 import re 
 import requests 
-import time 
+import time # Aún necesario para otras funciones
 from flask import Flask, request 
 from telebot import TeleBot, types 
-from cc_gen import cc_gen # Importa la función para generar tarjetas (DEBE existir cc_gen.py)
+from cc_gen import cc_gen 
 
 # ====================================================================================================
 # IMPORTACIÓN DEL GATEWAY /gay
 # ====================================================================================================
-# 📌 CORRECCIÓN: Importamos la función con el nombre correcto ccn_gate de gay.py
-from gay import ccn_gate as gay_gateway_check # Importamos y renombramos para claridad
+from gay import ccn_gate as gay_gateway_check 
 # ====================================================================================================
 
 # ==============================
 # CONFIGURACIÓN DEL BOT Y COOLDOWNS
 # ==============================
 
-# Obtiene el Token del bot de las variables de entorno de Railway
 TOKEN = os.getenv("BOT_TOKEN")
-# Inicializa el bot
 bot = TeleBot(TOKEN, parse_mode='HTML')
 
-# 📌 ID de usuarios autorizados (solo estos IDs pueden usar los comandos)
+# 📌 ID de usuarios autorizados
 USERS = [
     '6116275760', '5147213203']
 
-# 🚨 Cooldown específico para el comando /gay
-GAY_COOLDOWN = {}
-GAY_COOLDOWN_TIME = 30 # 30 segundos de espera para el comando /gay
+# ❌ Se elimina GAY_COOLDOWN y GAY_COOLDOWN_TIME para quitar el spam-lock del Gate /gay.
 
 # Fotos en Telegram (Usar FILE_ID para máxima estabilidad y velocidad)
-# ⚠️ REEMPLAZA ESTOS CON TUS FILE_ID REALES ⚠️
 IMG_PHOTO1 = "AgAD0QADlKxIL0z7_cT67p7pAASwzY020A4ABu8k9hFjI_TU_file_id_1_placeholder"
 IMG_PHOTO2 = "AgACAgEAAxkBAAE81YRo-UuWDmD16N0u1UZNGYRb3bp9kQACjgtrGy6KyUfGuhk5n4wzYQEAAwIAA3gAAzYE"
 
-# Flask app para configurar el webhook (servidor web)
 app = Flask(__name__)
-
-# 📌 Prefijos personalizados que el bot aceptará, además de '/'
 CUSTOM_PREFIXES = ['.', '&']
-
-# Lista de todos tus comandos para el router
 ALL_COMMANDS = ['bin', 'gen', 'start', 'gay']
 
 # ==============================
@@ -158,30 +147,19 @@ def gen(message):
 
 @bot.message_handler(commands=['gay'])
 def gate_gay(message):
-    """Maneja el comando /gay para chequear una tarjeta con tu función gay_gateway_check (ccn_gate)."""
+    """Maneja el comando /gay para chequear una tarjeta, ahora sin cooldown."""
     userid = str(message.from_user.id)
     if not ver_user(userid):
         return bot.reply_to(message, 'No estás autorizado.')
 
-    current_time = time.time() 
-    
-    # === LÓGICA DE COOLDOWN (SPAM-LOCK) ===
-    if userid in GAY_COOLDOWN: 
-        time_elapsed = current_time - GAY_COOLDOWN[userid] 
-        if time_elapsed < GAY_COOLDOWN_TIME: 
-            remaining = int(GAY_COOLDOWN_TIME - time_elapsed) 
-            return bot.reply_to( 
-                message, 
-                f"🚫 ¡Alto ahí! Debes esperar {remaining} segundos antes de volver a usar /gay." 
-            ) 
-    
+    # ❌ Lógica de COOLDOWN eliminada aquí.
+
     # 1. Preparar el texto de entrada
     raw_text = message.reply_to_message.text if message.reply_to_message else message.text 
     clean = raw_text.replace("/gay", "").strip() if not message.reply_to_message else raw_text.strip() 
     parts = re.split(r"[| \n\t]+", clean) 
     
     if len(parts) < 4: 
-        GAY_COOLDOWN[userid] = time.time()
         return bot.reply_to( 
             message, 
             "⚠️ Formato inválido.\nEjemplo:\n" 
@@ -219,7 +197,7 @@ def gate_gay(message):
         bin_number = cc[0:6] 
         binsito = binlist(bin_number) 
         
-        # 5. Creamos el mensaje final con formato limpio y estructurado (¡El cambio clave!)
+        # 5. Creamos el mensaje final con formato limpio y estructurado
         final_text = f"""
 {emoji} CARD --> <code>{full_cc}</code>
 {emoji} STATUS --> {status} {emoji}
@@ -230,14 +208,13 @@ def gate_gay(message):
 {emoji} BIN --> {binsito[1] if binsito else 'Desconocido'} {binsito[2] if binsito else ''} - {binsito[3] if binsito else ''}
 {emoji} BANK --> {binsito[6] if binsito else 'Desconocido'}
 {emoji} COUNTRY --> {binsito[4] if binsito else 'Desconocido'} {binsito[5] if binsito else ''}
-""" # Nota: Se eliminan los saltos de línea extra al inicio para que no haya espacio vacío.
+"""
     
     except Exception as e:
         final_text = f"❌ Error ejecutando GAY Gateway:\n{e}"
         print(f"Error en gate_gay: {e}")
 
-    # === ACTUALIZAR EL COOLDOWN === 
-    GAY_COOLDOWN[userid] = time.time() 
+    # ❌ La actualización del COOLDOWN (GAY_COOLDOWN[userid] = time.time()) ha sido eliminada.
     
     # 6. EDITAR el mensaje inicial con la respuesta final
     try: 
@@ -248,7 +225,6 @@ def gate_gay(message):
             parse_mode='HTML' 
         ) 
     except Exception as edit_error: 
-        # Si la edición falla (ej. mensaje demasiado viejo), envía uno nuevo.
         bot.send_message(chat_id=chat_id, text=final_text, parse_mode='HTML') 
         print(f"Error al editar mensaje: {edit_error}") 
 
@@ -256,7 +232,6 @@ def gate_gay(message):
 # CONFIGURACIÓN DEL WEBHOOK Y ROUTING
 # ==============================
 
-# Manejador genérico para comandos con prefijos personalizados ('.', '&')
 @bot.message_handler(func=lambda message: any(message.text.startswith(prefix) for prefix in CUSTOM_PREFIXES))
 def handle_custom_prefix_commands(message):
     text = message.text[1:]
@@ -277,7 +252,6 @@ def handle_custom_prefix_commands(message):
         gate_gay(new_message)
 
 
-# 📌 Webhook: Recibe el tráfico POST de Telegram
 @app.route('/' + TOKEN, methods=['POST'])
 def getMessage():
     """Recibe las actualizaciones del Webhook de Telegram."""
@@ -286,7 +260,6 @@ def getMessage():
     bot.process_new_updates([update])
     return "!", 200
 
-# 📌 La ruta raíz es la que ejecutará el Webhook
 @app.route("/", methods=['GET'])
 def index():
     """Ruta de inicio para Railway."""
@@ -300,19 +273,15 @@ if __name__ == "__main__":
     """Punto de entrada principal para ejecutar la aplicación."""
     
     PORT = int(os.getenv("PORT", 5000)) 
-    # Asegúrate de que APP_URL esté configurada en Railway (ej: ${{RAILWAY_STATIC_URL}})
     APP_URL = os.getenv("APP_URL") 
 
     if not APP_URL:
         raise ValueError("APP_URL no está definida en Railway Variables. Es necesaria para el Webhook.")
 
-    # 1. Quitar cualquier Webhook anterior
     bot.remove_webhook()
     
-    # 2. Configurar el nuevo Webhook 
     webhook_url = f"{APP_URL}/{TOKEN}"
     bot.set_webhook(url=webhook_url)
     print(f"✅ Webhook configurado en: {webhook_url}")
 
-    # 3. Iniciar el servidor Flask
     app.run(host="0.0.0.0", port=PORT)
