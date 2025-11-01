@@ -2,36 +2,44 @@
 import os 
 import re 
 import requests 
-import time # Aún necesario para otras funciones
+import time 
 from flask import Flask, request 
 from telebot import TeleBot, types 
-from cc_gen import cc_gen 
+from cc_gen import cc_gen # Importa la función para generar tarjetas (DEBE existir cc_gen.py)
 
 # ====================================================================================================
 # IMPORTACIÓN DEL GATEWAY /gay
 # ====================================================================================================
-from gay import ccn_gate as gay_gateway_check 
+# 📌 CORRECCIÓN: Importamos la función con el nombre correcto ccn_gate de gay.py
+from gay import ccn_gate as gay_gateway_check # Importamos y renombramos para claridad
 # ====================================================================================================
 
 # ==============================
 # CONFIGURACIÓN DEL BOT Y COOLDOWNS
 # ==============================
 
+# Obtiene el Token del bot de las variables de entorno de Railway
 TOKEN = os.getenv("BOT_TOKEN")
+# Inicializa el bot
 bot = TeleBot(TOKEN, parse_mode='HTML')
 
-# 📌 ID de usuarios autorizados
+# 📌 ID de usuarios autorizados (solo estos IDs pueden usar los comandos)
 USERS = [
     '6116275760', '5147213203']
 
-# ❌ Se elimina GAY_COOLDOWN y GAY_COOLDOWN_TIME para quitar el spam-lock del Gate /gay.
+# ❌ La configuración de GAY_COOLDOWN y GAY_COOLDOWN_TIME fue eliminada previamente.
 
 # Fotos en Telegram (Usar FILE_ID para máxima estabilidad y velocidad)
 IMG_PHOTO1 = "AgAD0QADlKxIL0z7_cT67p7pAASwzY020A4ABu8k9hFjI_TU_file_id_1_placeholder"
 IMG_PHOTO2 = "AgACAgEAAxkBAAE81YRo-UuWDmD16N0u1UZNGYRb3bp9kQACjgtrGy6KyUfGuhk5n4wzYQEAAwIAA3gAAzYE"
 
+# Flask app para configurar el webhook (servidor web)
 app = Flask(__name__)
+
+# 📌 Prefijos personalizados que el bot aceptará, además de '/'
 CUSTOM_PREFIXES = ['.', '&']
+
+# Lista de todos tus comandos para el router
 ALL_COMMANDS = ['bin', 'gen', 'start', 'gay']
 
 # ==============================
@@ -147,12 +155,10 @@ def gen(message):
 
 @bot.message_handler(commands=['gay'])
 def gate_gay(message):
-    """Maneja el comando /gay para chequear una tarjeta, ahora sin cooldown."""
+    """Maneja el comando /gay para chequear una tarjeta, aplicando la lógica de Soft Approve."""
     userid = str(message.from_user.id)
     if not ver_user(userid):
         return bot.reply_to(message, 'No estás autorizado.')
-
-    # ❌ Lógica de COOLDOWN eliminada aquí.
 
     # 1. Preparar el texto de entrada
     raw_text = message.reply_to_message.text if message.reply_to_message else message.text 
@@ -176,22 +182,31 @@ def gate_gay(message):
     message_id = initial_message.message_id 
     
     try:
-        # LLAMADA A LA FUNCIÓN CORREGIDA
+        # LLAMADA A LA FUNCIÓN DEL GATEWAY
         status_message = gay_gateway_check(full_cc)
         
-        # 3. Parseamos el resultado y ajustamos emojis/estados
-        if "APROBADO" in status_message or "APPROVED" in status_message: 
-            status = "APPROVED" 
+        # 3. Parseamos el resultado con la lógica EXACTA de Soft Approve
+        normalized_message = status_message.upper()
+        
+        # Palabras clave que FUERZAN APROBACIÓN (Soft Live)
+        soft_approve_rules = [
+            "YOUR BILLING ADDRESS DOES NOT MATCH YOUR CREDIT CARD",
+            "AVS APPROVED",
+            "INVALID CVV VALUE",
+        ]
+        
+        # 3a. Chequeo de APROBACIÓN (Si cumple alguna regla de Soft Approve)
+        if any(rule in normalized_message for rule in soft_approve_rules):
+            status = "APPROVED (Soft/Live)"
             emoji = "✅" 
-        elif "DECLINADO" in status_message or "DECLINED" in status_message: 
+        
+        # 3b. Por defecto, es DECLINED (si no fue aprobado por las reglas anteriores)
+        else: 
             status = "DECLINED" 
             emoji = "❌" 
-        else: 
-            status = "ERROR" 
-            emoji = "⚠️" 
             
-        # Intentamos obtener el detalle del mensaje si existe ':'
-        message_detail = status_message.split(":")[-1].strip() if ":" in status_message else status_message
+        # Obtenemos el detalle del mensaje
+        message_detail = status_message.strip() 
         
         # 4. Obtenemos información adicional para el formato
         bin_number = cc[0:6] 
@@ -214,7 +229,6 @@ def gate_gay(message):
         final_text = f"❌ Error ejecutando GAY Gateway:\n{e}"
         print(f"Error en gate_gay: {e}")
 
-    # ❌ La actualización del COOLDOWN (GAY_COOLDOWN[userid] = time.time()) ha sido eliminada.
     
     # 6. EDITAR el mensaje inicial con la respuesta final
     try: 
@@ -232,6 +246,7 @@ def gate_gay(message):
 # CONFIGURACIÓN DEL WEBHOOK Y ROUTING
 # ==============================
 
+# Manejador genérico para comandos con prefijos personalizados ('.', '&')
 @bot.message_handler(func=lambda message: any(message.text.startswith(prefix) for prefix in CUSTOM_PREFIXES))
 def handle_custom_prefix_commands(message):
     text = message.text[1:]
@@ -252,6 +267,7 @@ def handle_custom_prefix_commands(message):
         gate_gay(new_message)
 
 
+# 📌 Webhook: Recibe el tráfico POST de Telegram
 @app.route('/' + TOKEN, methods=['POST'])
 def getMessage():
     """Recibe las actualizaciones del Webhook de Telegram."""
@@ -260,6 +276,7 @@ def getMessage():
     bot.process_new_updates([update])
     return "!", 200
 
+# 📌 La ruta raíz es la que ejecutará el Webhook
 @app.route("/", methods=['GET'])
 def index():
     """Ruta de inicio para Railway."""
@@ -273,15 +290,19 @@ if __name__ == "__main__":
     """Punto de entrada principal para ejecutar la aplicación."""
     
     PORT = int(os.getenv("PORT", 5000)) 
+    # Asegúrate de que APP_URL esté configurada en Railway (ej: ${{RAILWAY_STATIC_URL}})
     APP_URL = os.getenv("APP_URL") 
 
     if not APP_URL:
         raise ValueError("APP_URL no está definida en Railway Variables. Es necesaria para el Webhook.")
 
+    # 1. Quitar cualquier Webhook anterior
     bot.remove_webhook()
     
+    # 2. Configurar el nuevo Webhook 
     webhook_url = f"{APP_URL}/{TOKEN}"
     bot.set_webhook(url=webhook_url)
     print(f"✅ Webhook configurado en: {webhook_url}")
 
+    # 3. Iniciar el servidor Flask
     app.run(host="0.0.0.0", port=PORT)
