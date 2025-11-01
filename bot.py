@@ -10,8 +10,8 @@ from cc_gen import cc_gen # Importa la función para generar tarjetas (DEBE exis
 # ====================================================================================================
 # IMPORTACIÓN DEL GATEWAY /gay
 # ====================================================================================================
-# 📌 Asegúrate de que tu archivo 'gay.py' esté subido y que contenga la función 'check_gay'
-from gay import ccn_gate
+# 📌 CORRECCIÓN: Importamos la función con el nombre correcto ccn_gate de gay.py
+from gay import ccn_gate as gay_gateway_check # Importamos y renombramos para claridad
 # ====================================================================================================
 
 # ==============================
@@ -25,7 +25,7 @@ bot = TeleBot(TOKEN, parse_mode='HTML')
 
 # 📌 ID de usuarios autorizados (solo estos IDs pueden usar los comandos)
 USERS = [
-    '6116275760', '8470094114']
+    '6116275760', '8470094114', '1073258864', '7457808814', '7973321076', '5551626715', '7612366259']
 
 # 🚨 Cooldown específico para el comando /gay
 GAY_COOLDOWN = {}
@@ -158,7 +158,7 @@ def gen(message):
 
 @bot.message_handler(commands=['gay'])
 def gate_gay(message):
-    """Maneja el comando /gay para chequear una tarjeta con tu función check_gay."""
+    """Maneja el comando /gay para chequear una tarjeta con tu función gay_gateway_check (ccn_gate)."""
     userid = str(message.from_user.id)
     if not ver_user(userid):
         return bot.reply_to(message, 'No estás autorizado.')
@@ -198,18 +198,19 @@ def gate_gay(message):
     message_id = initial_message.message_id 
     
     try:
-        # LLAMADA A LA FUNCIÓN DE GAY.PY
-        status_message = check_gay(full_cc)
+        # LLAMADA A LA FUNCIÓN CORREGIDA
+        status_message = gay_gateway_check(full_cc)
         
         # 3. Parseamos el resultado (ADAPTA ESTA LÓGICA SI TU FUNCIÓN DEVUELVE OTRA COSA)
         if "APROBADO" in status_message or "APPROVED" in status_message: 
             status = "APPROVED" 
             emoji = "✅" 
-            message_detail = status_message.split(":")[-1].strip() 
+            # Intentamos obtener el detalle del mensaje si existe ':'
+            message_detail = status_message.split(":")[-1].strip() if ":" in status_message else status_message
         elif "DECLINADO" in status_message or "DECLINED" in status_message: 
             status = "DECLINED" 
             emoji = "❌" 
-            message_detail = status_message.split(":")[-1].strip() 
+            message_detail = status_message.split(":")[-1].strip() if ":" in status_message else status_message
         else: 
             status = "ERROR" 
             emoji = "⚠️" 
@@ -294,27 +295,27 @@ def index():
     return "Bot is running.", 200
 
 # ===================================================================================
-# 🔑 BLOQUE DE ARRANQUE CRÍTICO PARA RAILWAY (Tu adición)
+# 🔑 BLOQUE DE ARRANQUE CRÍTICO PARA RAILWAY
 # ===================================================================================
 
 if __name__ == "__main__":
     """Punto de entrada principal para ejecutar la aplicación."""
-    # Railway provee la variable PORT que es necesaria para Flask
+    
     PORT = int(os.getenv("PORT", 5000)) 
-    # APP_URL debe ser configurada en las variables de Railway (ej: RAILWAY_STATIC_URL)
-    APP_URL = os.getenv("APP_URL") # Asegúrate de que esta variable exista en Railway
+    # Asegúrate de que APP_URL esté configurada en Railway (ej: ${{RAILWAY_STATIC_URL}})
+    APP_URL = os.getenv("APP_URL") 
 
     if not APP_URL:
-        # Esto asegura que si no hay URL, el programa no continúe y el error sea visible
         raise ValueError("APP_URL no está definida en Railway Variables. Es necesaria para el Webhook.")
 
     # 1. Quitar cualquier Webhook anterior
     bot.remove_webhook()
     
-    # 2. Configurar el nuevo Webhook (la URL completa a la que Telegram enviará las actualizaciones)
+    # 2. Configurar el nuevo Webhook 
     webhook_url = f"{APP_URL}/{TOKEN}"
     bot.set_webhook(url=webhook_url)
     print(f"✅ Webhook configurado en: {webhook_url}")
 
     # 3. Iniciar el servidor Flask
     app.run(host="0.0.0.0", port=PORT)
+
